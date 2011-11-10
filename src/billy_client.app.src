@@ -1,0 +1,12 @@
+{application, billy_client,
+ [
+  {description, ""},
+  {vsn, "1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {mod, { billy_client_app, []}},
+  {env, []}
+ ]}.
