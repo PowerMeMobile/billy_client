@@ -1,7 +1,10 @@
 -module(billy_client_session).
 
 -behaviour(gen_fsm).
--export([start_link/4]).
+-export([
+	start_link/4,
+	unbind/1
+]).
 -export([
 	init/1,
 	handle_event/3,
@@ -17,7 +20,10 @@
 	st_binding/3,
 
 	st_ready/2,
-	st_ready/3
+	st_ready/3,
+
+	st_unbinding/2,
+	st_unbinding/3
 	]).
 
 -include("logging.hrl").
@@ -28,6 +34,9 @@
 	client_id,
 	client_pw
 }).
+
+-define(DEFAULT_UNBIND_TIMEOUT, 30000).
+
 
 start_link(Addr, Port, ClientID, ClientPw) ->
 	gen_fsm:start_link(?MODULE, {Addr, Port, ClientID, ClientPw}, []).
@@ -116,6 +125,7 @@ st_awaiting_hello(Event, _From, StateData) ->
 	%{reply, {error, bad_arg}, StateName, StateData}.
 	{stop, {bad_arg, Event}, {error, bad_arg}, StateData}.
 
+
 st_binding({bind_response, #billy_protocol_bind_response{
 	status = accept
 }}, StateData = #state{
@@ -142,6 +152,20 @@ st_binding(Event, StateData) ->
 st_binding(Event, _From, StateData) ->
 	{stop, {bad_arg, Event}, {error, bad_arg}, StateData}.
 
+
+st_ready({control, unbind, Reason, Timeout}, StateData = #state{
+	sock = Sock
+}) ->
+	UnbindReq = #billy_protocol_unbind_request{
+		reason = Reason,
+		timeout = Timeout
+	},
+	UnbindReqPDU = billy_protocol_piqi:gen_pdu({unbind_request, UnbindReq}),
+	ok = gen_tcp:send(Sock, UnbindReqPDU),
+	inet:setopts(Sock, [{active, once}]),
+	
+	{next_state, st_unbinding, StateData, Timeout};
+
 st_ready({bye, #billy_protocol_bye{ reason = ByeReason }}, StateData) ->
 	{stop, {session_halt, ByeReason}, StateData};
 
@@ -150,3 +174,15 @@ st_ready(Event, StateData) ->
 
 st_ready(Event, _From, StateData) ->
 	{stop, {bad_arg, Event}, {error, bad_arg}, StateData}.
+
+
+st_unbinding(Event, StateData) ->
+	{stop, {bad_arg, Event}, StateData}.
+
+st_unbinding(Event, _From, StateData) ->
+	{stop, {bad_arg, Event}, {error, bad_arg}, StateData}.
+
+%%% API
+
+unbind(Session) ->
+	gen_fsm:send_event(Session, {control, unbind, <<"normal">>, ?DEFAULT_UNBIND_TIMEOUT}).
