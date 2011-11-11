@@ -1,6 +1,6 @@
 {application, billy_client,
  [
-  {description, ""},
+  {description, "billy_client - client library for Billy"},
   {vsn, "1"},
   {registered, []},
   {applications, [
