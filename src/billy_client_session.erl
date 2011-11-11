@@ -3,7 +3,8 @@
 -behaviour(gen_fsm).
 -export([
 	start_link/4,
-	unbind/1
+	unbind_async/1,
+	disconnect_async/1
 ]).
 -export([
 	init/1,
@@ -13,6 +14,9 @@
 	terminate/3,
 	code_change/4,
 	
+	st_initial/2,
+	st_initial/3,
+
 	st_awaiting_hello/2,
 	st_awaiting_hello/3,
 
@@ -27,7 +31,7 @@
 	]).
 
 -include("logging.hrl").
--include_lib("billy_piqi/include/billy_protocol_piqi.hrl").
+-include_lib("billy_common/include/billy_protocol_piqi.hrl").
 
 -record(state, {
 	sock,
@@ -163,7 +167,7 @@ st_ready({control, unbind, Reason, Timeout}, StateData = #state{
 	UnbindReqPDU = billy_protocol_piqi:gen_pdu({unbind_request, UnbindReq}),
 	ok = gen_tcp:send(Sock, UnbindReqPDU),
 	inet:setopts(Sock, [{active, once}]),
-	
+
 	{next_state, st_unbinding, StateData, Timeout};
 
 st_ready({bye, #billy_protocol_bye{ reason = ByeReason }}, StateData) ->
@@ -175,6 +179,8 @@ st_ready(Event, StateData) ->
 st_ready(Event, _From, StateData) ->
 	{stop, {bad_arg, Event}, {error, bad_arg}, StateData}.
 
+st_unbinding({unbind_response, #billy_protocol_unbind_response{}}, StateData) ->
+	{next_state, st_initial, StateData};
 
 st_unbinding(Event, StateData) ->
 	{stop, {bad_arg, Event}, StateData}.
@@ -182,7 +188,24 @@ st_unbinding(Event, StateData) ->
 st_unbinding(Event, _From, StateData) ->
 	{stop, {bad_arg, Event}, {error, bad_arg}, StateData}.
 
+st_initial(Event, StateData) ->
+	{stop, {bad_arg, Event}, StateData}.
+
+st_initial(Event, _From, StateData) ->
+	{stop, {bad_arg, Event}, {error, bad_arg}, StateData}.
+
+
 %%% API
 
-unbind(Session) ->
+unbind_async(Session) ->
 	gen_fsm:send_event(Session, {control, unbind, <<"normal">>, ?DEFAULT_UNBIND_TIMEOUT}).
+
+unbind_sync(Session) ->
+	{error, not_impl}. 
+	% gen_fsm:sync_send_event(Session, {control, unbind, <<"normal">>, ?DEFAULT_UNBIND_TIMEOUT}, infinity).
+
+
+
+disconnect_async(Session) ->
+	gen_fsm:send_event(Session, {control, disconnect}).
+
