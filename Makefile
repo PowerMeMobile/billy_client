@@ -1,4 +1,4 @@
-all: compile
+all: generate
 
 deps:
 	@./rebar get-deps
@@ -32,4 +32,7 @@ generate-fast: compile-fast
 
 console:
 	./rel/billy_client/bin/billy_client console
+
+release: generate
+	./rel/create-release.sh
 
