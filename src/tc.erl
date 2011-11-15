@@ -2,9 +2,18 @@
 
 -compile(export_all).
 
-start_sess1() ->
-	billy_client_session:start_link("localhost", 16062, <<"client1">>, <<"secureme!">>).
+start_sess() ->
+	{ok, Sock} = gen_tcp:connect("127.0.0.1", 16062, [binary, {active, false}]),
+	billy_client_session:start(Sock).
 
-unbind_sess(Sess) ->
-	billy_client_session:unbind_async(Sess).
+bind_sess(Sess) ->
+	gen_billy_session_c:reply_bind(Sess, [
+		{client_id, <<"client1">>},
+		{client_pw, <<"secureme!">>}
+	]).
+
+
+
+
+
 
