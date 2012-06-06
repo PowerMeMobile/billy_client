@@ -13,7 +13,7 @@
 	handle_info/3,
 	terminate/3,
 	code_change/4,
-	
+
 	st_initial/2,
 	st_initial/3,
 
@@ -31,7 +31,7 @@
 	]).
 
 -include("logging.hrl").
--include_lib("billy_common/include/billy_protocol_piqi.hrl").
+-include_lib("billy_common/include/billy_session_piqi.hrl").
 
 -record(state, {
 	sock,
@@ -69,21 +69,21 @@ handle_sync_event(Event, _From, _StateName, StateData) ->
 handle_info({tcp, Sock, TcpData}, StateName, StateData = #state{
 	sock = Sock
 }) ->
-	try 
+	try
 		PDU = billy_protocol_piqi:parse_pdu(TcpData),
 		?log_debug("[~p] got PDU: ~p", [StateName, PDU]),
 		gen_fsm:send_event(self(), PDU),
-		
+
 		{next_state, StateName, StateData}
 	catch
 		_EType:_Error ->
 			?log_debug("[~p] failed to parse incoming PDU", [StateName]),
-			Bye = #billy_protocol_bye{
+			Bye = #billy_session_bye{
 				reason = <<"billy.invalid_pdu">>
 			},
 			ByePDU = billy_protocol_piqi:gen_pdu({bye, Bye}),
 			ok = gen_tcp:send(Sock, ByePDU),
-			
+
 			{stop, normal, StateData}
 	end;
 
@@ -101,8 +101,8 @@ terminate(_Reason, _StateName, _StateData) ->
 st_awaiting_hello(
 	{
 		hello,
-		#billy_protocol_hello{ server_version = ServerVersion, session_id = SessionID }
-	}, 
+		#billy_session_hello{server_version = ServerVersion, session_id = SessionID}
+	},
 	StateData = #state{
 		sock = Sock,
 		client_id = ClientID,
@@ -111,7 +111,7 @@ st_awaiting_hello(
 	?log_debug("[st_awaiting_hello]: got Hello. Server version: ~p, SessionID: ~s", [ServerVersion, uuid:to_string(SessionID)]),
 	?set_pname("billy_client_session[~s]", SessionID),
 
-	BindReq = #billy_protocol_bind_request{
+	BindReq = #billy_session_bind_request{
 		client_id = ClientID,
 		client_pw = ClientPw
 	},
@@ -130,8 +130,8 @@ st_awaiting_hello(Event, _From, StateData) ->
 	{stop, {bad_arg, Event}, {error, bad_arg}, StateData}.
 
 
-st_binding({bind_response, #billy_protocol_bind_response{
-	status = accept
+st_binding({bind_response, #billy_session_bind_response{
+	result = accept
 }}, StateData = #state{
 	sock = Sock
 }) ->
@@ -140,8 +140,8 @@ st_binding({bind_response, #billy_protocol_bind_response{
 
 	{next_state, st_ready, StateData};
 
-st_binding({bind_response, #billy_protocol_bind_response{
-	status = {reject, RejectReason}
+st_binding({bind_response, #billy_session_bind_response{
+	result = {reject, RejectReason}
 }}, StateData = #state{
 	sock = Sock
 }) ->
@@ -160,9 +160,9 @@ st_binding(Event, _From, StateData) ->
 st_ready({control, unbind, Reason, Timeout}, StateData = #state{
 	sock = Sock
 }) ->
-	UnbindReq = #billy_protocol_unbind_request{
-		reason = Reason,
-		timeout = Timeout
+	UnbindReq = #billy_session_unbind_request{
+		reason = Reason%,
+		%timeout = Timeout
 	},
 	UnbindReqPDU = billy_protocol_piqi:gen_pdu({unbind_request, UnbindReq}),
 	ok = gen_tcp:send(Sock, UnbindReqPDU),
@@ -170,7 +170,7 @@ st_ready({control, unbind, Reason, Timeout}, StateData = #state{
 
 	{next_state, st_unbinding, StateData, Timeout};
 
-st_ready({bye, #billy_protocol_bye{ reason = ByeReason }}, StateData) ->
+st_ready({bye, #billy_session_bye{reason = ByeReason}}, StateData) ->
 	{stop, {session_halt, ByeReason}, StateData};
 
 st_ready(Event, StateData) ->
@@ -179,7 +179,7 @@ st_ready(Event, StateData) ->
 st_ready(Event, _From, StateData) ->
 	{stop, {bad_arg, Event}, {error, bad_arg}, StateData}.
 
-st_unbinding({unbind_response, #billy_protocol_unbind_response{}}, StateData) ->
+st_unbinding({unbind_response, #billy_session_unbind_response{}}, StateData) ->
 	{next_state, st_initial, StateData};
 
 st_unbinding(Event, StateData) ->
@@ -201,7 +201,7 @@ unbind_async(Session) ->
 	gen_fsm:send_event(Session, {control, unbind, <<"normal">>, ?DEFAULT_UNBIND_TIMEOUT}).
 
 unbind_sync(Session) ->
-	{error, not_impl}. 
+	{error, not_impl}.
 	% gen_fsm:sync_send_event(Session, {control, unbind, <<"normal">>, ?DEFAULT_UNBIND_TIMEOUT}, infinity).
 
 
