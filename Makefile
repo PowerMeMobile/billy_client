@@ -1,6 +1,8 @@
+NAME=billy_client
+
 all: generate
 
-deps:
+get-deps:
 	@./rebar get-deps
 
 clean:
@@ -15,24 +17,22 @@ dialyze:
 build-plt:
 	@./rebar build-plt skip_deps=true
 
-compile: deps
+compile: get-deps
 	@./rebar compile
 
 generate: compile
-	@rm -rf ./rel/billy_client
+	@rm -rf ./rel/$(NAME)
 	@./rebar generate
 
-compile-fast: 
+compile-fast:
 	@./rebar compile
 
 generate-fast: compile-fast
-	@rm -rf ./rel/billy
+	@rm -rf ./rel/$(NAME)
 	@./rebar generate
 
-
 console:
-	./rel/billy_client/bin/billy_client console
+	./rel/$(NAME)/bin/$(NAME) console
 
 release: generate
 	./rel/create-release.sh
-
