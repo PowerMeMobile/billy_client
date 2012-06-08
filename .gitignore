@@ -1,3 +1,5 @@
-rel/erl_crash.dump
-rel/billy_client
+deps
 ebin
+rel/billy_client
+rel/erl_crash.dump
+
