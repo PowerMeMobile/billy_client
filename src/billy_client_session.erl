@@ -1,11 +1,15 @@
 -module(billy_client_session).
 
 -behaviour(gen_fsm).
+
+%% API
 -export([
 	start_link/4,
 	unbind_async/1,
 	disconnect_async/1
 ]).
+
+%% gen_fsm callbacks
 -export([
 	init/1,
 	handle_event/3,
@@ -41,9 +45,26 @@
 
 -define(DEFAULT_UNBIND_TIMEOUT, 30000).
 
+%% ===================================================================
+%% API
+%% ===================================================================
 
 start_link(Addr, Port, ClientID, ClientPw) ->
 	gen_fsm:start_link(?MODULE, {Addr, Port, ClientID, ClientPw}, []).
+
+unbind_async(Session) ->
+	gen_fsm:send_event(Session, {control, unbind, <<"normal">>, ?DEFAULT_UNBIND_TIMEOUT}).
+
+%% unbind_sync(Session) ->
+%% 	{error, not_impl}.
+%% 	% gen_fsm:sync_send_event(Session, {control, unbind, <<"normal">>, ?DEFAULT_UNBIND_TIMEOUT}, infinity).
+
+disconnect_async(Session) ->
+	gen_fsm:send_event(Session, {control, disconnect}).
+
+%% ===================================================================
+%% gen_fsm callbacks
+%% ===================================================================
 
 init({Addr, Port, ClientID, ClientPw}) ->
 	{ok, Sock} = gen_tcp:connect(Addr, Port, [binary]),
@@ -70,7 +91,7 @@ handle_info({tcp, Sock, TcpData}, StateName, StateData = #state{
 	sock = Sock
 }) ->
 	try
-		PDU = billy_protocol_piqi:parse_pdu(TcpData),
+		PDU = billy_session_piqi:parse_pdu(TcpData),
 		?log_debug("[~p] got PDU: ~p", [StateName, PDU]),
 		gen_fsm:send_event(self(), PDU),
 
@@ -81,7 +102,7 @@ handle_info({tcp, Sock, TcpData}, StateName, StateData = #state{
 			Bye = #billy_session_bye{
 				reason = <<"billy.invalid_pdu">>
 			},
-			ByePDU = billy_protocol_piqi:gen_pdu({bye, Bye}),
+			ByePDU = billy_session_piqi:gen_pdu({bye, Bye}),
 			ok = gen_tcp:send(Sock, ByePDU),
 
 			{stop, normal, StateData}
@@ -98,16 +119,13 @@ code_change(_OldVsn, StateName, StateData, _Extra) ->
 terminate(_Reason, _StateName, _StateData) ->
 	ok.
 
-st_awaiting_hello(
-	{
-		hello,
-		#billy_session_hello{server_version = ServerVersion, session_id = SessionID}
-	},
-	StateData = #state{
+st_awaiting_hello({hello, #billy_session_hello{
+		server_version = ServerVersion, session_id = SessionID
+}}, StateData = #state{
 		sock = Sock,
 		client_id = ClientID,
 		client_pw = ClientPw
-	}) ->
+}) ->
 	?log_debug("[st_awaiting_hello]: got Hello. Server version: ~p, SessionID: ~s", [ServerVersion, uuid:to_string(SessionID)]),
 	?set_pname("billy_client_session[~s]", SessionID),
 
@@ -115,7 +133,7 @@ st_awaiting_hello(
 		client_id = ClientID,
 		client_pw = ClientPw
 	},
-	BindPDU = billy_protocol_piqi:gen_pdu({bind_request, BindReq}),
+	BindPDU = billy_session_piqi:gen_pdu({bind_request, BindReq}),
 	ok = gen_tcp:send(Sock, BindPDU),
 	inet:setopts(Sock, [{active, once}]),
 
@@ -156,7 +174,6 @@ st_binding(Event, StateData) ->
 st_binding(Event, _From, StateData) ->
 	{stop, {bad_arg, Event}, {error, bad_arg}, StateData}.
 
-
 st_ready({control, unbind, Reason, Timeout}, StateData = #state{
 	sock = Sock
 }) ->
@@ -164,7 +181,7 @@ st_ready({control, unbind, Reason, Timeout}, StateData = #state{
 		reason = Reason%,
 		%timeout = Timeout
 	},
-	UnbindReqPDU = billy_protocol_piqi:gen_pdu({unbind_request, UnbindReq}),
+	UnbindReqPDU = billy_session_piqi:gen_pdu({unbind_request, UnbindReq}),
 	ok = gen_tcp:send(Sock, UnbindReqPDU),
 	inet:setopts(Sock, [{active, once}]),
 
@@ -194,18 +211,6 @@ st_initial(Event, StateData) ->
 st_initial(Event, _From, StateData) ->
 	{stop, {bad_arg, Event}, {error, bad_arg}, StateData}.
 
-
-%%% API
-
-unbind_async(Session) ->
-	gen_fsm:send_event(Session, {control, unbind, <<"normal">>, ?DEFAULT_UNBIND_TIMEOUT}).
-
-unbind_sync(Session) ->
-	{error, not_impl}.
-	% gen_fsm:sync_send_event(Session, {control, unbind, <<"normal">>, ?DEFAULT_UNBIND_TIMEOUT}, infinity).
-
-
-
-disconnect_async(Session) ->
-	gen_fsm:send_event(Session, {control, disconnect}).
-
+%% ===================================================================
+%% Internal
+%% ===================================================================
