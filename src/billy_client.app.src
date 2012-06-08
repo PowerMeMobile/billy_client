@@ -6,7 +6,8 @@
   {applications, [
                   kernel,
                   stdlib,
-                  billy_common
+                  billy_common,
+                  log4erl
                 ]},
   {mod, {billy_client_app, []}},
   {env, []}
