@@ -1,216 +1,120 @@
 -module(billy_client_session).
 
--behaviour(gen_fsm).
+-behaviour(gen_billy_session_c).
 
 %% API
 -export([
-	start_link/4,
-	unbind_async/1,
-	disconnect_async/1
+	start/0,
+	start_link/2,
+	process/1,
+	send/2,
+	start_transaction/1
 ]).
 
-%% gen_fsm callbacks
+%% gen_billy_session_c callbacks
 -export([
-	init/1,
-	handle_event/3,
-	handle_sync_event/4,
-	handle_info/3,
-	terminate/3,
-	code_change/4,
+	init/2,
+	handle_call/4,
+	handle_cast/3,
 
-	st_initial/2,
-	st_initial/3,
+	handle_hello/3,
+	handle_bind_accept/3,
+	handle_bind_reject/3,
+	handle_require_unbind/3,
+	handle_unbind_response/3,
+	handle_bye/3,
+	handle_data_pdu/3
+]).
 
-	st_awaiting_hello/2,
-	st_awaiting_hello/3,
-
-	st_binding/2,
-	st_binding/3,
-
-	st_ready/2,
-	st_ready/3,
-
-	st_unbinding/2,
-	st_unbinding/3
-	]).
-
--include("logging.hrl").
 -include_lib("billy_common/include/billy_session_piqi.hrl").
+-include("logging.hrl").
+
+% start(Sock) ->
+% 	{ok, Sess} = supervisor:start_child(billy_client_session_sup, [ Sock, {} ]),
+% 	gen_billy_session_c:pass_socket_control(Sess, Sock),
+% 	{ok, Sess}.
+
+start_link(Sock, Args) ->
+	gen_billy_session_c:start_link(Sock, ?MODULE, Args).
 
 -record(state, {
-	sock,
-	client_id,
-	client_pw
+	last_tran_id
 }).
 
--define(DEFAULT_UNBIND_TIMEOUT, 30000).
+init(_Args, _Peer) ->
+	{ok, #state{last_tran_id = 0}}.
 
-%% ===================================================================
-%% API
-%% ===================================================================
+handle_call(start_transaction, _From, _Peer, State = #state{last_tran_id = TranID}) ->
+	if
+		TranID < 16#7FFFFFFFFFFFFFFF ->
+			NewTransID = TranID + 1,
+			{ok, Pid} = billy_client_transaction:start({self(), NewTransID});
+		true ->
+			NewTransID = 1,
+			{ok, Pid} = billy_client_transaction:start({self(), NewTransID}),
+			{reply, {ok, Pid}, State}
+	end,
+	{reply, {ok, Pid}, State#state{last_tran_id = NewTransID}};
 
-start_link(Addr, Port, ClientID, ClientPw) ->
-	gen_fsm:start_link(?MODULE, {Addr, Port, ClientID, ClientPw}, []).
+handle_call(peer_request, _From, Peer, State = #state{}) ->
+	{reply, {ok, Peer}, State};
 
-unbind_async(Session) ->
-	gen_fsm:send_event(Session, {control, unbind, <<"normal">>, ?DEFAULT_UNBIND_TIMEOUT}).
+handle_call(Request, _From, _Peer, State = #state{}) ->
+	{stop, {bad_arg, Request}, State}.
 
-%% unbind_sync(Session) ->
-%% 	{error, not_impl}.
-%% 	% gen_fsm:sync_send_event(Session, {control, unbind, <<"normal">>, ?DEFAULT_UNBIND_TIMEOUT}, infinity).
+handle_cast(start_processing, _Peer, State = #state{}) ->
+	{noreply, State};
 
-disconnect_async(Session) ->
-	gen_fsm:send_event(Session, {control, disconnect}).
+handle_cast(Request, _Peer, State = #state{}) ->
+	{stop, {bad_arg, Request}, State}.
 
-%% ===================================================================
-%% gen_fsm callbacks
-%% ===================================================================
+handle_hello(#billy_session_hello{}, _Peer, State) ->
+	{noreply, State}.
 
-init({Addr, Port, ClientID, ClientPw}) ->
-	{ok, Sock} = gen_tcp:connect(Addr, Port, [binary]),
-	?set_pname_fmt("billy_client_session[~p]", [Sock]),
-	inet:setopts(Sock, [{active, once}]),
+handle_bind_accept(#billy_session_bind_response{}, _Peer, State) ->
+	{noreply, State}.
 
-	{ok, st_awaiting_hello, #state{
-		sock = Sock,
-		client_id = ClientID,
-		client_pw = ClientPw
-	}}.
+handle_bind_reject(#billy_session_bind_response{}, _Peer, State) ->
+	{noreply, State}.
 
-handle_event(Event, _StateName, StateData) ->
-	% {next_state, StateName, StateData}.
-	?log_debug("Got event: ~p", [Event]),
-	{stop, {bad_arg, Event}, StateData}.
+handle_require_unbind(#billy_session_require_unbind{}, _Peer, State) ->
+	{noreply, State}.
 
-handle_sync_event(Event, _From, _StateName, StateData) ->
-	% {reply, {error, bad_arg}, StateName, StateData}.
-	?log_debug("Got sync_event: ~p", [Event]),
-	{stop, {bad_arg, Event}, bad_arg, StateData}.
+handle_unbind_response(#billy_session_unbind_response{}, _Peer, State) ->
+	{noreply, State}.
 
-handle_info({tcp, Sock, TcpData}, StateName, StateData = #state{
-	sock = Sock
-}) ->
-	try
-		PDU = billy_session_piqi:parse_pdu(TcpData),
-		?log_debug("[~p] got PDU: ~p", [StateName, PDU]),
-		gen_fsm:send_event(self(), PDU),
+handle_bye(#billy_session_bye{}, _Peer, State) ->
+	{noreply, State}.
 
-		{next_state, StateName, StateData}
-	catch
-		_EType:_Error ->
-			?log_debug("[~p] failed to parse incoming PDU", [StateName]),
-			Bye = #billy_session_bye{
-				reason = <<"billy.invalid_pdu">>
-			},
-			ByePDU = billy_session_piqi:gen_pdu({bye, Bye}),
-			ok = gen_tcp:send(Sock, ByePDU),
-
-			{stop, normal, StateData}
-	end;
-
-handle_info(Info, StateName, StateData) ->
-	%{next_state, StateName, StateData}.
-	?log_debug("[~p] Got info: ~p", [StateName, Info]),
-	{stop, {bad_arg, Info}, StateData}.
-
-code_change(_OldVsn, StateName, StateData, _Extra) ->
-	{ok, StateName, StateData}.
-
-terminate(_Reason, _StateName, _StateData) ->
-	ok.
-
-st_awaiting_hello({hello, #billy_session_hello{
-		server_version = ServerVersion, session_id = SessionID
-}}, StateData = #state{
-		sock = Sock,
-		client_id = ClientID,
-		client_pw = ClientPw
-}) ->
-	?log_debug("[st_awaiting_hello]: got Hello. Server version: ~p, SessionID: ~s", [ServerVersion, uuid:to_string(SessionID)]),
-	?set_pname("billy_client_session[~s]", SessionID),
-
-	BindReq = #billy_session_bind_request{
-		client_id = ClientID,
-		client_pw = ClientPw
-	},
-	BindPDU = billy_session_piqi:gen_pdu({bind_request, BindReq}),
-	ok = gen_tcp:send(Sock, BindPDU),
-	inet:setopts(Sock, [{active, once}]),
-
-	{next_state, st_binding, StateData};
-
-st_awaiting_hello(Event, StateData) ->
-	%{next_state, st_free, StateData}.
-	{stop, {bad_arg, Event}, StateData}.
-
-st_awaiting_hello(Event, _From, StateData) ->
-	%{reply, {error, bad_arg}, StateName, StateData}.
-	{stop, {bad_arg, Event}, {error, bad_arg}, StateData}.
+handle_data_pdu(Data = #billy_session_data_pdu{}, _Peer, State) ->
+	billy_client_transaction_dispatcher:dispatch(self(), Data),	
+	{noreply, State}.
 
 
-st_binding({bind_response, #billy_session_bind_response{
-	result = accept
-}}, StateData = #state{
-	sock = Sock
-}) ->
-	?log_debug("got bind_response -> accept", []),
-	inet:setopts(Sock, [{active, once}]),
 
-	{next_state, st_ready, StateData};
+%%% API %%%
 
-st_binding({bind_response, #billy_session_bind_response{
-	result = {reject, RejectReason}
-}}, StateData = #state{
-	sock = Sock
-}) ->
-	?log_debug("got bind_response -> reject, ~p", [RejectReason]),
-	inet:setopts(Sock, [{active, once}]),
+start() ->
+	{ok, Sock} = gen_tcp:connect("127.0.0.1", 16062, [binary, {active, false}]),
+	io:format("sock: ~p", [Sock]),
+	{ok, Sess} = supervisor:start_child(billy_client_session_sup, [ Sock, {} ]),
+	gen_billy_session_c:pass_socket_control(Sess, Sock),
+	{ok, Peer} = gen_server:call(Sess, peer_request),
+	{ok, unbound} = gen_fsm:sync_send_all_state_event(Peer, wait_till_st_unbound, infinity),
+	?log_debug("state unbound got...", []),
+	gen_billy_session_c:reply_bind(Sess, [
+		{client_id, <<"client1">>},
+		{client_pw, <<"secureme!">>}
+	]),
+	{ok, bound} = gen_fsm:sync_send_all_state_event(Peer, wait_till_st_bound, infinity),
+	?log_debug("state bound got...", []),
+	{ok, Sess}.
 
-	{stop, {bind_rejected, RejectReason}, StateData};
+process(Session) ->
+	gen_server:cast(Session, start_processing).
 
-st_binding(Event, StateData) ->
-	{stop, {bad_arg, Event}, StateData}.
+start_transaction(SessionPid) ->
+	gen_server:call(SessionPid, start_transaction).
 
-st_binding(Event, _From, StateData) ->
-	{stop, {bad_arg, Event}, {error, bad_arg}, StateData}.
-
-st_ready({control, unbind, Reason, Timeout}, StateData = #state{
-	sock = Sock
-}) ->
-	UnbindReq = #billy_session_unbind_request{
-		reason = Reason%,
-		%timeout = Timeout
-	},
-	UnbindReqPDU = billy_session_piqi:gen_pdu({unbind_request, UnbindReq}),
-	ok = gen_tcp:send(Sock, UnbindReqPDU),
-	inet:setopts(Sock, [{active, once}]),
-
-	{next_state, st_unbinding, StateData, Timeout};
-
-st_ready({bye, #billy_session_bye{reason = ByeReason}}, StateData) ->
-	{stop, {session_halt, ByeReason}, StateData};
-
-st_ready(Event, StateData) ->
-	{stop, {bad_arg, Event}, StateData}.
-
-st_ready(Event, _From, StateData) ->
-	{stop, {bad_arg, Event}, {error, bad_arg}, StateData}.
-
-st_unbinding({unbind_response, #billy_session_unbind_response{}}, StateData) ->
-	{next_state, st_initial, StateData};
-
-st_unbinding(Event, StateData) ->
-	{stop, {bad_arg, Event}, StateData}.
-
-st_unbinding(Event, _From, StateData) ->
-	{stop, {bad_arg, Event}, {error, bad_arg}, StateData}.
-
-st_initial(Event, StateData) ->
-	{stop, {bad_arg, Event}, StateData}.
-
-st_initial(Event, _From, StateData) ->
-	{stop, {bad_arg, Event}, {error, bad_arg}, StateData}.
-
-%% ===================================================================
-%% Internal
-%% ===================================================================
+send(Session, ResponseBin) ->
+	gen_billy_session_c:reply_data_pdu(Session, ResponseBin).

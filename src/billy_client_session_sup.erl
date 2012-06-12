@@ -1,5 +1,5 @@
 
--module(billy_client_sup).
+-module(billy_client_session_sup).
 
 -behaviour(supervisor).
 
@@ -10,7 +10,7 @@
 -export([init/1]).
 
 %% Helper macro for declaring children of supervisor
--define(CHILD(I, Type), {I, {I, start_link, []}, permanent, 5000, Type, [I]}).
+-define(CHILD(I, Type), {I, {I, start_link, []}, temporary, 50000, Type, [I]}).
 
 %% ===================================================================
 %% API functions
@@ -24,9 +24,8 @@ start_link() ->
 %% ===================================================================
 
 init([]) ->
-	io:format("billy_client_sup:init~n", []),
-    {ok, { {one_for_one, 5, 10}, [
-    	?CHILD(billy_client_session_sup, supervisor),
-    	?CHILD(billy_client_transaction_sup, supervisor),
-    	?CHILD(billy_client_transaction_dispatcher_sup, supervisor)
+	io:format("billy_client_session_sup:init~n", []),
+    {ok, { {simple_one_for_one, 5, 10}, [
+    	?CHILD(billy_client_session, worker)
     ]} }.
+
