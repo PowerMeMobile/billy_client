@@ -29,17 +29,50 @@
 -include_lib("billy_common/include/billy_session_piqi.hrl").
 -include("logging.hrl").
 
+-record(state, {
+	last_tran_id
+}).
+
 % start(Sock) ->
-% 	{ok, Sess} = supervisor:start_child(billy_client_session_sup, [ Sock, {} ]),
+% 	{ok, Sess} = supervisor:start_child(billy_client_session_sup, [Sock, {}]),
 % 	gen_billy_session_c:pass_socket_control(Sess, Sock),
 % 	{ok, Sess}.
+
+%% ===================================================================
+%% API
+%% ===================================================================
 
 start_link(Sock, Args) ->
 	gen_billy_session_c:start_link(Sock, ?MODULE, Args).
 
--record(state, {
-	last_tran_id
-}).
+start() ->
+	{ok, Sock} = gen_tcp:connect("127.0.0.1", 16062, [binary, {active, false}]),
+	io:format("sock: ~p", [Sock]),
+	{ok, Sess} = supervisor:start_child(billy_client_session_sup, [Sock, {}]),
+	gen_billy_session_c:pass_socket_control(Sess, Sock),
+	{ok, Peer} = gen_server:call(Sess, peer_request),
+	{ok, unbound} = gen_fsm:sync_send_all_state_event(Peer, wait_till_st_unbound, infinity),
+	?log_debug("state unbound got...", []),
+	gen_billy_session_c:reply_bind(Sess, [
+		{client_id, <<"client1">>},
+		{client_pw, <<"secureme!">>}
+	]),
+	{ok, bound} = gen_fsm:sync_send_all_state_event(Peer, wait_till_st_bound, infinity),
+	?log_debug("state bound got...", []),
+	{ok, Sess}.
+
+process(Session) ->
+	gen_server:cast(Session, start_processing).
+
+start_transaction(SessionPid) ->
+	gen_server:call(SessionPid, start_transaction).
+
+send(Session, ResponseBin) ->
+	gen_billy_session_c:reply_data_pdu(Session, ResponseBin).
+
+%% ===================================================================
+%% gen_billy_session_c callbacks
+%% ===================================================================
 
 init(_Args, _Peer) ->
 	{ok, #state{last_tran_id = 0}}.
@@ -75,6 +108,7 @@ handle_bind_accept(#billy_session_bind_response{}, _Peer, State) ->
 	{noreply, State}.
 
 handle_bind_reject(#billy_session_bind_response{}, _Peer, State) ->
+
 	{noreply, State}.
 
 handle_require_unbind(#billy_session_require_unbind{}, _Peer, State) ->
@@ -87,34 +121,5 @@ handle_bye(#billy_session_bye{}, _Peer, State) ->
 	{noreply, State}.
 
 handle_data_pdu(Data = #billy_session_data_pdu{}, _Peer, State) ->
-	billy_client_transaction_dispatcher:dispatch(self(), Data),	
+	billy_client_transaction_dispatcher:dispatch(self(), Data),
 	{noreply, State}.
-
-
-
-%%% API %%%
-
-start() ->
-	{ok, Sock} = gen_tcp:connect("127.0.0.1", 16062, [binary, {active, false}]),
-	io:format("sock: ~p", [Sock]),
-	{ok, Sess} = supervisor:start_child(billy_client_session_sup, [ Sock, {} ]),
-	gen_billy_session_c:pass_socket_control(Sess, Sock),
-	{ok, Peer} = gen_server:call(Sess, peer_request),
-	{ok, unbound} = gen_fsm:sync_send_all_state_event(Peer, wait_till_st_unbound, infinity),
-	?log_debug("state unbound got...", []),
-	gen_billy_session_c:reply_bind(Sess, [
-		{client_id, <<"client1">>},
-		{client_pw, <<"secureme!">>}
-	]),
-	{ok, bound} = gen_fsm:sync_send_all_state_event(Peer, wait_till_st_bound, infinity),
-	?log_debug("state bound got...", []),
-	{ok, Sess}.
-
-process(Session) ->
-	gen_server:cast(Session, start_processing).
-
-start_transaction(SessionPid) ->
-	gen_server:call(SessionPid, start_transaction).
-
-send(Session, ResponseBin) ->
-	gen_billy_session_c:reply_data_pdu(Session, ResponseBin).
