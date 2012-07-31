@@ -46,6 +46,7 @@ start_link(Sock, Args) ->
 	gen_billy_session_c:start_link(Sock, ?MODULE, Args).
 
 start() ->
+	et:trace_me(85, client, server, connect, []),
 	{ok, Sock} = gen_tcp:connect("127.0.0.1", 16062, [binary, {active, false}]),
 	io:format("sock: ~p", [Sock]),
 	{ok, Sess} = supervisor:start_child(billy_client_session_sup, [Sock, {}]),
