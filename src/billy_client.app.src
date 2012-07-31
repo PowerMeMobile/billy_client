@@ -1,5 +1,4 @@
-{application, billy_client,
- [
+{application, billy_client, [
   {description, "billy_client - client library for Billy"},
   {vsn, "0.1.0"},
   {registered, []},

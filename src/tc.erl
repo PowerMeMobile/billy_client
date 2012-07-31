@@ -4,8 +4,12 @@
 
 -include("logging.hrl").
 
+connect() ->
+	{ok, SessionPid} = billy_client_session:start(),
+	void.
+
 start(StartSeqNum, EndSeqNum, TranQuantity, ThreadsQuantity) ->
-	io:format("[tc] Generating tasks...~n", []), 
+	io:format("[tc] Generating tasks...~n", []),
 	{ok, TaskList} = generate_cids(StartSeqNum, EndSeqNum, TranQuantity, ThreadsQuantity),
 	io:format("[tc] TaskList generated...~n", []),
 	{ok, SessionPid} = billy_client_session:start(),
@@ -25,7 +29,7 @@ start_thread(Task, SessionPid, CounterSrv) ->
 start_transaction(CID, SessionPid, CounterSrv) ->
 	{ok, TranPid} = billy_client_session:start_transaction(SessionPid),
 	{ok, Container} = new_container(10),
-	case billy_client_transaction:reserve( TranPid, CID, Container ) of 
+	case billy_client_transaction:reserve(TranPid, CID, Container) of
 		{ok, accepted} ->
 			% io:format("Reserving accepted... ~p~n", [TranPid]),
 			% {ok, {commited, ok}} = billy_client_transaction:commit(TranPid),
@@ -43,10 +47,10 @@ start_transaction(CID, SessionPid, CounterSrv) ->
 
 new_container(Cnt) ->
 	{ok, EmptyCnt} = billy_service:cont_create(),
-	{ok, Container} = billy_service:cont_set_id( EmptyCnt, <<"sms_on">>, {svc_details, Cnt} ),
+	{ok, Container} = billy_service:cont_set_id(EmptyCnt, <<"sms_on">>, {svc_details, Cnt}),
 	{ok, Container}.
 
-start_counter(StartTime, TranQuantity) -> 
+start_counter(StartTime, TranQuantity) ->
 	counter(StartTime, TranQuantity, 0, {0, 0, 0, 0}).
 
 counter(StartTime, TranQuantity, ReportCnt, Report) when  TranQuantity == ReportCnt ->
@@ -86,9 +90,9 @@ report(StartTime, TranQuantity, ReportCnt, Report) ->
  	io:format("TransactionErrors: ~p~n", [TransactionErrors]),
  	io:format("CounterErrors: ~p~n", [CounterErrors]),
 
- 	{S1,S2,S3} = StartTime,
+ 	{S1, S2, S3} = StartTime,
  	NewStartTime = S1 * 1000000 + S2 + S3/1000000,
- 	{E1,E2,E3} = Now,
+ 	{E1, E2, E3} = Now,
  	NewEndTime = E1 * 1000000 + E2 + E3/1000000,
  	RPS = TranQuantity/(NewEndTime - NewStartTime),
  	io:format("Requests per second: ~p~n", [RPS]).
@@ -110,7 +114,7 @@ gen_task_map(TranQuantity, ThreadsQuantity)->
 	Second = lists:map(fun(_)->
 		Div
 	end, lists:seq(1, ThreadsQuantity - Rem)),
-	TaskMap = lists:merge(First, Second), 
+	TaskMap = lists:merge(First, Second),
 	{ok, TaskMap}.
 
 gen_tasks(TaskList, [], _Random, _Set)->

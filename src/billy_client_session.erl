@@ -50,14 +50,14 @@ start() ->
 	io:format("sock: ~p", [Sock]),
 	{ok, Sess} = supervisor:start_child(billy_client_session_sup, [Sock, {}]),
 	gen_billy_session_c:pass_socket_control(Sess, Sock),
-	{ok, Peer} = gen_server:call(Sess, peer_request),
-	{ok, unbound} = gen_fsm:sync_send_all_state_event(Peer, wait_till_st_unbound, infinity),
+	{ok, FSM} = gen_server:call(Sess, peer_request),
+	{ok, unbound} = gen_fsm:sync_send_all_state_event(FSM, wait_till_st_unbound, infinity),
 	?log_debug("state unbound got...", []),
 	gen_billy_session_c:reply_bind(Sess, [
 		{client_id, <<"client1">>},
 		{client_pw, <<"secureme!">>}
 	]),
-	{ok, bound} = gen_fsm:sync_send_all_state_event(Peer, wait_till_st_bound, infinity),
+	{ok, bound} = gen_fsm:sync_send_all_state_event(FSM, wait_till_st_bound, infinity),
 	?log_debug("state bound got...", []),
 	{ok, Sess}.
 
@@ -74,10 +74,10 @@ send(Session, ResponseBin) ->
 %% gen_billy_session_c callbacks
 %% ===================================================================
 
-init(_Args, _Peer) ->
+init(_Args, _FSM) ->
 	{ok, #state{last_tran_id = 0}}.
 
-handle_call(start_transaction, _From, _Peer, State = #state{last_tran_id = TranID}) ->
+handle_call(start_transaction, _From, _FSM, State = #state{last_tran_id = TranID}) ->
 	if
 		TranID < 16#7FFFFFFFFFFFFFFF ->
 			NewTransID = TranID + 1,
@@ -89,37 +89,36 @@ handle_call(start_transaction, _From, _Peer, State = #state{last_tran_id = TranI
 	end,
 	{reply, {ok, Pid}, State#state{last_tran_id = NewTransID}};
 
-handle_call(peer_request, _From, Peer, State = #state{}) ->
-	{reply, {ok, Peer}, State};
+handle_call(peer_request, _From, FSM, State = #state{}) ->
+	{reply, {ok, FSM}, State};
 
-handle_call(Request, _From, _Peer, State = #state{}) ->
+handle_call(Request, _From, _FSM, State = #state{}) ->
 	{stop, {bad_arg, Request}, State}.
 
-handle_cast(start_processing, _Peer, State = #state{}) ->
+handle_cast(start_processing, _FSM, State = #state{}) ->
 	{noreply, State};
 
-handle_cast(Request, _Peer, State = #state{}) ->
+handle_cast(Request, _FSM, State = #state{}) ->
 	{stop, {bad_arg, Request}, State}.
 
-handle_hello(#billy_session_hello{}, _Peer, State) ->
+handle_hello(#billy_session_hello{}, _FSM, State) ->
 	{noreply, State}.
 
-handle_bind_accept(#billy_session_bind_response{}, _Peer, State) ->
+handle_bind_accept(#billy_session_bind_response{}, _FSM, State) ->
 	{noreply, State}.
 
-handle_bind_reject(#billy_session_bind_response{}, _Peer, State) ->
-
+handle_bind_reject(#billy_session_bind_response{}, _FSM, State) ->
 	{noreply, State}.
 
-handle_require_unbind(#billy_session_require_unbind{}, _Peer, State) ->
+handle_require_unbind(#billy_session_require_unbind{}, _FSM, State) ->
 	{noreply, State}.
 
-handle_unbind_response(#billy_session_unbind_response{}, _Peer, State) ->
+handle_unbind_response(#billy_session_unbind_response{}, _FSM, State) ->
 	{noreply, State}.
 
-handle_bye(#billy_session_bye{}, _Peer, State) ->
+handle_bye(#billy_session_bye{}, _FSM, State) ->
 	{noreply, State}.
 
-handle_data_pdu(Data = #billy_session_data_pdu{}, _Peer, State) ->
+handle_data_pdu(Data = #billy_session_data_pdu{}, _FSM, State) ->
 	billy_client_transaction_dispatcher:dispatch(self(), Data),
 	{noreply, State}.
