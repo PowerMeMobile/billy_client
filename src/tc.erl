@@ -5,8 +5,8 @@
 -include("logging.hrl").
 
 connect() ->
-	{ok, SessionPid} = billy_client_session:start(),
-	void.
+	{ok, _SessionPid} = billy_client_session:start(),
+	ok.
 
 start(StartSeqNum, EndSeqNum, TranQuantity, ThreadsQuantity) ->
 	io:format("[tc] Generating tasks...~n", []),
@@ -16,15 +16,55 @@ start(StartSeqNum, EndSeqNum, TranQuantity, ThreadsQuantity) ->
 	io:format("SessionPid: ~p~n", [SessionPid]),
 	StartTime = now(),
 	CounterSrv = spawn_link(?MODULE, start_counter, [StartTime, TranQuantity]),
-	lists:foreach(fun(Task)->
-		spawn_link(?MODULE, start_thread, [Task, SessionPid, CounterSrv])
-	end, TaskList).
+	lists:foreach(
+		fun(Task) ->
+			spawn_link(?MODULE, start_thread, [Task, SessionPid, CounterSrv])
+		end,
+		TaskList).
+
+generate_cids(StartSeqNum, EndSeqNum, TranQuantity, ThreadsQuantity) ->
+	{ok, TaskMap} = gen_task_map(TranQuantity, ThreadsQuantity),
+	io:format("TaskMap generated~n", []),
+	Set = sets:new(),
+	RandomFun = fun() -> random:uniform(EndSeqNum - StartSeqNum) + StartSeqNum end,
+	{ok, TaskList} = gen_tasks([], TaskMap, RandomFun, Set),
+	{ok, TaskList}.
+
+gen_task_map(TranQuantity, ThreadsQuantity) ->
+	Div = TranQuantity div ThreadsQuantity, % trans for each thread
+	Rem = TranQuantity rem ThreadsQuantity, % rem of trans
+	First = lists:map(fun(_) -> Div + 1 end, lists:seq(1, Rem)),
+	Second = lists:map(fun(_) -> Div end, lists:seq(1, ThreadsQuantity - Rem)),
+	TaskMap = lists:merge(First, Second),
+	{ok, TaskMap}.
+
+gen_tasks(TaskListAcc, [], _RandomFun, _Set) ->
+	{ok, TaskListAcc};
+gen_tasks(TaskListAcc, [CIDCnt | TaskMapTail], RandomFun, Set) ->
+	{ok, Task, NewSet} = gen_task([], CIDCnt, RandomFun, Set),
+	io:format("~p tasks remains.~n", [length(TaskMapTail)]),
+	gen_tasks([Task | TaskListAcc], TaskMapTail, RandomFun, NewSet).
+
+gen_task(Task, 0, _RandomFun, NewSet) ->
+	{ok, Task, NewSet};
+gen_task(Task, CIDCnt, RandomFun, Set) ->
+	NewCID = RandomFun(),
+	Bool = sets:is_element(NewCID, Set),
+	case Bool of
+		true ->
+			gen_task(Task, CIDCnt, RandomFun, Set);
+		false ->
+			NewSet = sets:add_element(NewCID, Set),
+			gen_task([NewCID | Task], CIDCnt - 1, RandomFun, NewSet)
+	end.
 
 start_thread(Task, SessionPid, CounterSrv) ->
-	lists:foreach(fun(CID)->
-		start_transaction(CID, SessionPid, CounterSrv),
-		io:format(".", [])
-	end, Task).
+	lists:foreach(
+		fun(CID)->
+			start_transaction(CID, SessionPid, CounterSrv),
+			io:format(".", [])
+		end,
+		Task).
 
 start_transaction(CID, SessionPid, CounterSrv) ->
 	{ok, TranPid} = billy_client_session:start_transaction(SessionPid),
@@ -96,43 +136,3 @@ report(StartTime, TranQuantity, ReportCnt, Report) ->
  	NewEndTime = E1 * 1000000 + E2 + E3/1000000,
  	RPS = TranQuantity/(NewEndTime - NewStartTime),
  	io:format("Requests per second: ~p~n", [RPS]).
-
-generate_cids(StartSeqNum, EndSeqNum, TranQuantity, ThreadsQuantity)->
-	{ok, TaskMap} = gen_task_map(TranQuantity, ThreadsQuantity),
-	io:format("TaskMap generated~n", []),
-	Set = sets:new(),
-	Random = fun()->random:uniform(EndSeqNum-StartSeqNum)+StartSeqNum end,
-	{ok, TaskList} = gen_tasks([], TaskMap, Random, Set),
-	{ok, TaskList}.
-
-gen_task_map(TranQuantity, ThreadsQuantity)->
-	Div = TranQuantity div ThreadsQuantity, % trans for each thread
-	Rem = TranQuantity rem ThreadsQuantity, % rem of trans
-	First = lists:map(fun(_)->
-		Div+1
-	end, lists:seq(1, Rem)),
-	Second = lists:map(fun(_)->
-		Div
-	end, lists:seq(1, ThreadsQuantity - Rem)),
-	TaskMap = lists:merge(First, Second),
-	{ok, TaskMap}.
-
-gen_tasks(TaskList, [], _Random, _Set)->
-	{ok, TaskList};
-gen_tasks(TaskList, [CIDCnt | TaskMapTail], Random, Set)->
-	{ok, Task, NewSet} = gen_task([], CIDCnt, Random, Set),
-	io:format("~p tasks remains.~n", [length(TaskMapTail)]),
-	gen_tasks([Task | TaskList], TaskMapTail, Random, NewSet).
-
-gen_task(Task, 0, _Random, NewSet)->
-	{ok, Task, NewSet};
-gen_task(Task, CIDCnt, Random, Set)->
-	NewCID = Random(),
-	Bool = sets:is_element(NewCID, Set),
-	case Bool of
-		true ->
-			gen_task(Task, CIDCnt, Random, Set);
-		false ->
-			NewSet = sets:add_element(NewCID, Set),
-			gen_task([NewCID | Task], CIDCnt-1, Random, NewSet)
-	end.
