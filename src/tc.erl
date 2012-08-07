@@ -9,11 +9,11 @@ connect() ->
 	ok.
 
 start(StartSeqNum, EndSeqNum, TranQuantity, ThreadsQuantity) ->
-	io:format("[tc] Generating tasks...~n", []),
+	?log_debug("[tc] Generating tasks...", []),
 	{ok, TaskList} = generate_cids(StartSeqNum, EndSeqNum, TranQuantity, ThreadsQuantity),
-	io:format("[tc] TaskList generated...~n", []),
+	?log_debug("[tc] TaskList generated...", []),
 	{ok, SessionPid} = billy_client_session:start(),
-	io:format("SessionPid: ~p~n", [SessionPid]),
+	?log_debug("SessionPid: ~p", [SessionPid]),
 	StartTime = now(),
 	CounterSrv = spawn_link(?MODULE, start_counter, [StartTime, TranQuantity]),
 	lists:foreach(
@@ -24,7 +24,7 @@ start(StartSeqNum, EndSeqNum, TranQuantity, ThreadsQuantity) ->
 
 generate_cids(StartSeqNum, EndSeqNum, TranQuantity, ThreadsQuantity) ->
 	{ok, TaskMap} = gen_task_map(TranQuantity, ThreadsQuantity),
-	io:format("TaskMap generated~n", []),
+	?log_debug("TaskMap generated", []),
 	Set = sets:new(),
 	RandomFun = fun() -> random:uniform(EndSeqNum - StartSeqNum) + StartSeqNum end,
 	{ok, TaskList} = gen_tasks([], TaskMap, RandomFun, Set),
@@ -42,7 +42,7 @@ gen_tasks(TaskListAcc, [], _RandomFun, _Set) ->
 	{ok, TaskListAcc};
 gen_tasks(TaskListAcc, [CIDCnt | TaskMapTail], RandomFun, Set) ->
 	{ok, Task, NewSet} = gen_task([], CIDCnt, RandomFun, Set),
-	io:format("~p tasks remains.~n", [length(TaskMapTail)]),
+	?log_debug("~p tasks remains.", [length(TaskMapTail)]),
 	gen_tasks([Task | TaskListAcc], TaskMapTail, RandomFun, NewSet).
 
 gen_task(Task, 0, _RandomFun, NewSet) ->
@@ -62,7 +62,7 @@ start_thread(Task, SessionPid, CounterSrv) ->
 	lists:foreach(
 		fun(CID)->
 			start_transaction(CID, SessionPid, CounterSrv),
-			io:format(".", [])
+			?log_debug(".", [])
 		end,
 		Task).
 
@@ -71,17 +71,17 @@ start_transaction(CID, SessionPid, CounterSrv) ->
 	{ok, Container} = new_container(10),
 	case billy_client_transaction:reserve(TranPid, CID, Container) of
 		{ok, accepted} ->
-			% io:format("Reserving accepted... ~p~n", [TranPid]),
+			% ?log_debug("Reserving accepted... ~p", [TranPid]),
 			% {ok, {commited, ok}} = billy_client_transaction:commit(TranPid),
-			% io:format("Commit complited... ~n", []);
+			% ?log_debug("Commit complited... ", []);
 			{ok, {rolledback, ok}} = billy_client_transaction:rollback(TranPid),
-			% io:format("Rollingback complited: ~p~n", [now()]);
+			% ?log_debug("Rollingback complited: ~p", [now()]);
 			CounterSrv ! {report, rolledback};
 		{ok, {rejected, _Reason}} ->
-			% io:format("Rejected! Reason: ~p~n", [Reason]);
+			% ?log_debug("Rejected! Reason: ~p", [Reason]);
 			CounterSrv ! {report, rejected};
 		Any ->
-			io:format("[transaction] Error. Reserve request returned: ~p~n", [Any]),
+			?log_debug("[transaction] Error. Reserve request returned: ~p", [Any]),
 			CounterSrv ! {report, {error, Any}}
 	end.
 
@@ -104,35 +104,35 @@ counter(StartTime, TranQuantity, ReportCnt, {Rolledback, Rejected, TransactionEr
 		{report, {error, _Any}} ->
  			counter(StartTime, TranQuantity, ReportCnt + 1, {Rolledback, Rejected, TransactionErrors +1, CounterErrors});
  		Any ->
- 			io:format("[counter]: Error. Receive bad match: ~p~n", [Any]),
+ 			?log_debug("[counter]: Error. Receive bad match: ~p", [Any]),
  			counter(StartTime, TranQuantity, ReportCnt + 1, {Rolledback, Rejected, TransactionErrors, CounterErrors + 1})
  	after
  		10000 ->
- 			io:format("TIMEOUT...~n", []),
+ 			?log_debug("TIMEOUT...", []),
  			report(StartTime, TranQuantity, ReportCnt, {Rolledback, Rejected, TransactionErrors, CounterErrors})
  	end.
 
 report(StartTime, TranQuantity, ReportCnt, Report) ->
 	NStartTime = calendar:now_to_local_time(StartTime),
-	io:format("~nStartTime: ~p~n", [NStartTime]),
+	?log_debug("StartTime: ~p", [NStartTime]),
 	Now = now(),
 	NEndTime = calendar:now_to_local_time(Now),
-	io:format("NEndTime: ~p~n", [NEndTime]),
+	?log_debug("NEndTime: ~p", [NEndTime]),
 
-  	io:format("StartTime: ~p~n", [StartTime]),
- 	io:format("EndTime: ~p~n", [Now]),
+  	?log_debug("StartTime: ~p", [StartTime]),
+ 	?log_debug("EndTime: ~p", [Now]),
 
- 	io:format("TranQuantity: ~p~n", [TranQuantity]),
- 	io:format("ReportCnt: ~p~n", [ReportCnt]),
+ 	?log_debug("TranQuantity: ~p", [TranQuantity]),
+ 	?log_debug("ReportCnt: ~p", [ReportCnt]),
  	{Rolledback, Rejected, TransactionErrors, CounterErrors} = Report,
- 	io:format("Rolledback: ~p ~n", [Rolledback]),
- 	io:format("Rejected: ~p ~n", [Rejected]),
- 	io:format("TransactionErrors: ~p~n", [TransactionErrors]),
- 	io:format("CounterErrors: ~p~n", [CounterErrors]),
+ 	?log_debug("Rolledback: ~p ", [Rolledback]),
+ 	?log_debug("Rejected: ~p ", [Rejected]),
+ 	?log_debug("TransactionErrors: ~p", [TransactionErrors]),
+ 	?log_debug("CounterErrors: ~p", [CounterErrors]),
 
  	{S1, S2, S3} = StartTime,
  	NewStartTime = S1 * 1000000 + S2 + S3/1000000,
  	{E1, E2, E3} = Now,
  	NewEndTime = E1 * 1000000 + E2 + E3/1000000,
  	RPS = TranQuantity/(NewEndTime - NewStartTime),
- 	io:format("Requests per second: ~p~n", [RPS]).
+ 	?log_debug("Requests per second: ~p", [RPS]).

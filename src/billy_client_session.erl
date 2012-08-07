@@ -48,7 +48,7 @@ start_link(Sock, Args) ->
 start() ->
 	et:trace_me(85, client, server, connect, []),
 	{ok, Sock} = gen_tcp:connect("127.0.0.1", 16062, [binary, {active, false}]),
-	io:format("sock: ~p", [Sock]),
+	?log_debug("sock: ~p", [Sock]),
 	{ok, Sess} = supervisor:start_child(billy_client_session_sup, [Sock, {}]),
 	gen_billy_session_c:pass_socket_control(Sess, Sock),
 	{ok, FSM} = gen_server:call(Sess, peer_request),
