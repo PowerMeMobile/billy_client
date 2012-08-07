@@ -7,8 +7,7 @@
                   stdlib,
                   gproc,
                   billy_common,
-                  billy_session_c,
-                  log4erl
+                  billy_session_c
                 ]},
   {mod, {billy_client_app, []}},
   {env, []}

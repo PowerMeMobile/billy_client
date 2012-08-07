@@ -2,7 +2,7 @@
 
 -compile(export_all).
 
--include("logging.hrl").
+-include_lib("billy_common/include/logging.hrl").
 
 connect() ->
 	{ok, _SessionPid} = billy_client_session:start(),

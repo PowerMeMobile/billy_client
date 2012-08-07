@@ -21,7 +21,7 @@
 	code_change/3
 ]).
 
--include("logging.hrl").
+-include_lib("billy_common/include/logging.hrl").
 -include_lib("billy_common/include/billy_transaction_piqi.hrl").
 -include_lib("billy_common/include/service.hrl").
 -include_lib("billy_common/include/gen_server_spec.hrl").

@@ -26,8 +26,8 @@
 	handle_data_pdu/3
 ]).
 
+-include_lib("billy_common/include/logging.hrl").
 -include_lib("billy_common/include/billy_session_piqi.hrl").
--include("logging.hrl").
 
 -record(state, {
 	last_tran_id
