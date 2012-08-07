@@ -102,7 +102,6 @@ commited({SessionPID, TranID, Result}) ->
 	gen_fsm:send_event(TranSrv, {commited, Result}).
 
 rolledback({SessionPID, TranID, Result}) ->
-	% io:format("rolledback... ~p~n", [TranID]),
 	{ok, TranSrv} = ?MODULE:get({SessionPID, TranID}),
 	gen_fsm:send_event(TranSrv, {rolledback, Result}).
 
