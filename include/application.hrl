@@ -1,5 +1,5 @@
--ifndef(k_billy_client_application_hrl).
--define(k_billy_client_application_hrl, included).
+-ifndef(billy_client_hrl).
+-define(billy_client_hrl, included).
 
 -define(APP, billy_client).
 
