@@ -4,11 +4,13 @@
 
 %% API
 -export([
-	start/0,
 	start_link/2,
-	process/1,
-	send/2,
-	start_transaction/1
+
+	start_session/4,
+	stop_session/1,
+
+	start_transaction/1,
+	send/2
 ]).
 
 %% gen_billy_session_c callbacks
@@ -30,13 +32,8 @@
 -include_lib("billy_common/include/billy_session_piqi.hrl").
 
 -record(state, {
-	last_tran_id
+	last_trans_id
 }).
-
-% start(Sock) ->
-% 	{ok, Sess} = supervisor:start_child(billy_client_session_sup, [Sock, {}]),
-% 	gen_billy_session_c:pass_socket_control(Sess, Sock),
-% 	{ok, Sess}.
 
 %% ===================================================================
 %% API
@@ -45,28 +42,37 @@
 start_link(Sock, Args) ->
 	gen_billy_session_c:start_link(Sock, ?MODULE, Args).
 
-start() ->
+start_session(Host, Port, ClientId, ClientPw) ->
 	et:trace_me(85, client, server, connect, []),
-	{ok, Sock} = gen_tcp:connect("127.0.0.1", 16062, [binary, {active, false}]),
-	?log_debug("sock: ~p", [Sock]),
-	{ok, Sess} = supervisor:start_child(billy_client_session_sup, [Sock, {}]),
-	gen_billy_session_c:pass_socket_control(Sess, Sock),
-	{ok, FSM} = gen_server:call(Sess, peer_request),
-	{ok, unbound} = gen_fsm:sync_send_all_state_event(FSM, wait_till_st_unbound, infinity),
-	?log_debug("state unbound got...", []),
-	gen_billy_session_c:reply_bind(Sess, [
-		{client_id, <<"client1">>},
-		{client_pw, <<"secureme!">>}
+
+	{ok, Socket} = gen_tcp:connect(Host, Port, [binary, {active, false}]),
+	{ok, Session} = billy_client_session_sup:start_session(Socket),
+	{ok, FSM} = gen_server:call(Session, get_fsm),
+	?log_debug("passing control over ~p to ~p", [Socket, FSM]),
+	ok = gen_tcp:controlling_process(Socket, FSM),
+	inet:setopts(Socket, [{active, once}]),
+
+	{ok, unbound} = gen_fsm:sync_send_all_state_event(FSM, wait_until_st_unbound, infinity),
+	%?log_debug("state unbound got...", []),
+	gen_billy_session_c:reply_bind(Session, [
+		{client_id, ClientId},
+		{client_pw, ClientPw}
 	]),
-	{ok, bound} = gen_fsm:sync_send_all_state_event(FSM, wait_till_st_bound, infinity),
-	?log_debug("state bound got...", []),
-	{ok, Sess}.
+	{ok, bound} = gen_fsm:sync_send_all_state_event(FSM, wait_until_st_bound, infinity),
+	%?log_debug("state bound got...", []),
 
-process(Session) ->
-	gen_server:cast(Session, start_processing).
+	{ok, Session}.
 
-start_transaction(SessionPid) ->
-	gen_server:call(SessionPid, start_transaction).
+stop_session(Session) ->
+	et:trace_me(85, client, server, disconnect, []),
+
+	gen_billy_session_c:reply_unbind(Session, [{reason, normal}]),
+	{ok, FSM} = gen_server:call(Session, get_fsm),
+	{ok, unbound} = gen_fsm:sync_send_all_state_event(FSM, wait_until_st_unbound, infinity),
+	gen_billy_session_c:reply_bye(Session, []).
+
+start_transaction(Session) ->
+	gen_server:call(Session, start_transaction).
 
 send(Session, ResponseBin) ->
 	gen_billy_session_c:reply_data_pdu(Session, ResponseBin).
@@ -76,28 +82,24 @@ send(Session, ResponseBin) ->
 %% ===================================================================
 
 init(_Args, _FSM) ->
-	{ok, #state{last_tran_id = 0}}.
+	{ok, #state{last_trans_id = 0}}.
 
-handle_call(start_transaction, _From, _FSM, State = #state{last_tran_id = TranID}) ->
-	if
-		TranID < 16#7FFFFFFFFFFFFFFF ->
-			NewTransID = TranID + 1,
-			{ok, Pid} = billy_client_transaction:start({self(), NewTransID});
-		true ->
-			NewTransID = 1,
-			{ok, Pid} = billy_client_transaction:start({self(), NewTransID}),
-			{reply, {ok, Pid}, State}
-	end,
-	{reply, {ok, Pid}, State#state{last_tran_id = NewTransID}};
+handle_call(start_transaction, _From, _FSM, State = #state{last_trans_id = TransId}) ->
+	NewTransId =
+		case TransId < 16#7FFFFFFFFFFFFFFF of
+			false ->
+				TransId + 1;
+			true ->
+				1
+		end,
+	{ok, Pid} = billy_client_transaction:start({self(), NewTransId}),
+	{reply, {ok, Pid}, State#state{last_trans_id = NewTransId}};
 
-handle_call(peer_request, _From, FSM, State = #state{}) ->
+handle_call(get_fsm, _From, FSM, State = #state{}) ->
 	{reply, {ok, FSM}, State};
 
 handle_call(Request, _From, _FSM, State = #state{}) ->
 	{stop, {bad_arg, Request}, State}.
-
-handle_cast(start_processing, _FSM, State = #state{}) ->
-	{noreply, State};
 
 handle_cast(Request, _FSM, State = #state{}) ->
 	{stop, {bad_arg, Request}, State}.

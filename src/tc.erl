@@ -3,16 +3,66 @@
 -compile(export_all).
 
 -include_lib("billy_common/include/logging.hrl").
+-include_lib("billy_common/include/service.hrl").
 
-connect() ->
-	{ok, _SessionPid} = billy_client_session:start(),
-	ok.
+t() ->
+	{ok, Session} = billy_client:start_session("127.0.0.1", 16062, <<"client1">>, <<"secureme!">>),
+
+	{ok, TransId1} = billy_client:start_transaction(Session),
+	{ok, Container} = new_container(<<"sms_on">>, 10),
+	{ok, accepted} = billy_client:reserve(TransId1, 1, Container),
+	{ok, {commited, ok}} = billy_client:commit(TransId1),
+
+	{ok, TransId2} = billy_client:start_transaction(Session),
+	{ok, Container} = new_container(<<"sms_on">>, 10),
+	{ok, accepted} = billy_client:reserve(TransId2, 1, Container),
+	{ok, {rolledback, ok}} = billy_client:rollback(TransId2),
+
+	ok = billy_client:stop_session(Session).
+
+start_session() ->
+	{ok, Session} = billy_client:start_session("127.0.0.1", 16062, <<"client1">>, <<"secureme!">>),
+	{ok, Session}.
+
+stop_session(Session) ->
+	billy_client:stop_session(Session).
+
+start_transaction(Session) ->
+	{ok, TransId} = billy_client:start_transaction(Session),
+	{ok, TransId}.
+
+test_commit(TransId, CID) ->
+	{ok, Container} = new_container(<<"sms_on">>, 10),
+	case billy_client:reserve(TransId, CID, Container) of
+		{ok, accepted} ->
+			?log_debug("Reserving accepted... ~p", [TransId]),
+			{ok, {commited, ok}} = billy_client:commit(TransId),
+			?log_debug("Commit completed... ", []);
+			% {ok, {rolledback, ok}} = billy_client:rollback(TransId),
+			% ?log_debug("Rollingback completed: ~p", [now()]);
+		{ok, {rejected, Reason}} ->
+			?log_debug("Rejected! Reason: ~p", [Reason]);
+		Any ->
+			?log_debug("[transaction] Error. Reserve request returned: ~p", [Any])
+	end.
+
+test_rollback(TransId, CID) ->
+	{ok, Container} = new_container(<<"sms_on">>, 10),
+	case billy_client:reserve(TransId, CID, Container) of
+		{ok, accepted} ->
+			{ok, {rolledback, ok}} = billy_client:rollback(TransId),
+			?log_debug("Rollingback complited: ~p", [now()]);
+		{ok, {rejected, Reason}} ->
+			?log_debug("Rejected! Reason: ~p", [Reason]);
+		Any ->
+			?log_debug("[transaction] Error. Reserve request returned: ~p", [Any])
+	end.
 
 start(StartSeqNum, EndSeqNum, TranQuantity, ThreadsQuantity) ->
 	?log_debug("[tc] Generating tasks...", []),
 	{ok, TaskList} = generate_cids(StartSeqNum, EndSeqNum, TranQuantity, ThreadsQuantity),
-	?log_debug("[tc] TaskList generated...", []),
-	{ok, SessionPid} = billy_client_session:start(),
+	?log_debug("[tc] TaskList generated...~p", [TaskList]),
+	{ok, SessionPid} = billy_client:start_session("127.0.0.1", 16062, <<"client1">>, <<"secureme!">>),
 	?log_debug("SessionPid: ~p", [SessionPid]),
 	StartTime = now(),
 	CounterSrv = spawn_link(?MODULE, start_counter, [StartTime, TranQuantity]),
@@ -67,14 +117,14 @@ start_thread(Task, SessionPid, CounterSrv) ->
 		Task).
 
 start_transaction(CID, SessionPid, CounterSrv) ->
-	{ok, TranPid} = billy_client_session:start_transaction(SessionPid),
-	{ok, Container} = new_container(10),
-	case billy_client_transaction:reserve(TranPid, CID, Container) of
+	{ok, TransId} = billy_client:start_transaction(SessionPid),
+	{ok, Container} = new_container(<<"sms_on">>, 10),
+	case billy_client:reserve(TransId, CID, Container) of
 		{ok, accepted} ->
-			% ?log_debug("Reserving accepted... ~p", [TranPid]),
-			% {ok, {commited, ok}} = billy_client_transaction:commit(TranPid),
+			% ?log_debug("Reserving accepted... ~p", [TransId]),
+			% {ok, {commited, ok}} = billy_client:commit(TransId),
 			% ?log_debug("Commit complited... ", []);
-			{ok, {rolledback, ok}} = billy_client_transaction:rollback(TranPid),
+			{ok, {rolledback, ok}} = billy_client:rollback(TransId),
 			% ?log_debug("Rollingback complited: ~p", [now()]);
 			CounterSrv ! {report, rolledback};
 		{ok, {rejected, _Reason}} ->
@@ -85,10 +135,10 @@ start_transaction(CID, SessionPid, CounterSrv) ->
 			CounterSrv ! {report, {error, Any}}
 	end.
 
-new_container(Cnt) ->
-	{ok, EmptyCnt} = billy_service:cont_create(),
-	{ok, Container} = billy_service:cont_set_id(EmptyCnt, <<"sms_on">>, {svc_details, Cnt}),
-	{ok, Container}.
+new_container(Type, Count) ->
+	{ok, EmptyContainer} = billy_service:cont_create(),
+	{ok, FullContainer} = billy_service:cont_set_id(EmptyContainer, Type, #svc_details{quantity = Count}),
+	{ok, FullContainer}.
 
 start_counter(StartTime, TranQuantity) ->
 	counter(StartTime, TranQuantity, 0, {0, 0, 0, 0}).
