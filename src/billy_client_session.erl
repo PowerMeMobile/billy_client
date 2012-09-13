@@ -4,7 +4,7 @@
 
 %% API
 -export([
-	start_link/4,
+	start_link/3,
 
 	start_session/4,
 	stop_session/1,
@@ -41,13 +41,21 @@
 %% API
 %% ===================================================================
 
-start_link(Host, Port, ClientId, ClientPw) ->
-	gen_billy_session_c:start_link(?MODULE, [Host, Port, ClientId, ClientPw]).
+start_link(Socket, ClientId, ClientPw) ->
+	gen_billy_session_c:start_link(Socket, ?MODULE, [ClientId, ClientPw]).
 
 start_session(Host, Port, ClientId, ClientPw) ->
 	et:trace_me(85, client, server, connect, []),
-	{ok, Session} = billy_client_session_sup:start_session(Host, Port, ClientId, ClientPw),
-	{ok, Session}.
+	case gen_tcp:connect(Host, Port, [binary, {active, false}]) of
+		{ok, Socket} ->
+			{ok, Session} = billy_client_session_sup:start_session(Socket, ClientId, ClientPw),
+			{ok, FSM} = gen_server:call(Session, get_fsm, infinity),
+			ok = gen_tcp:controlling_process(Socket, FSM),
+			inet:setopts(Socket, [{active, once}]),
+			{ok, Session};
+		Error ->
+			Error
+	end.
 
 stop_session(Session) ->
 	et:trace_me(85, client, server, disconnect, []),
