@@ -21,8 +21,7 @@ t() ->
 	ok = billy_client:stop_session(Session).
 
 start_session() ->
-	{ok, Session} = billy_client:start_session("127.0.0.1", 16062, <<"client1">>, <<"secureme!">>),
-	{ok, Session}.
+	billy_client:start_session("127.0.0.1", 16062, <<"client1">>, <<"secureme!">>).
 
 stop_session(Session) ->
 	billy_client:stop_session(Session).

@@ -34,7 +34,8 @@
 -record(state, {
 	client_id,
 	client_pw,
-	last_trans_id
+	last_trans_id,
+	bind_result_callback
 }).
 
 %% ===================================================================
@@ -48,11 +49,24 @@ start_session(Host, Port, ClientId, ClientPw) ->
 	et:trace_me(85, client, server, connect, []),
 	case gen_tcp:connect(Host, Port, [binary, {active, false}]) of
 		{ok, Socket} ->
+			%% start new session and pass socket to it.
 			{ok, Session} = billy_client_session_sup:start_session(Socket, ClientId, ClientPw),
-			{ok, FSM} = gen_server:call(Session, get_fsm, infinity),
+			{ok, FSM} = gen_server:call(Session, get_fsm),
 			ok = gen_tcp:controlling_process(Socket, FSM),
 			inet:setopts(Socket, [{active, once}]),
-			{ok, Session};
+			%% wait for bind result.
+			case gen_server:call(Session, wait_for_bind_result, 10000) of
+				{ok, accepted} ->
+					%% all is ok.
+					{ok, Session};
+				{ok, rejected} ->
+					et:trace_me(85, client, server, disconnect, []),
+					%% stop the session.
+					gen_server:cast(Session, disconnect),
+					{error, invalid_credentials};
+				Error ->
+					Error
+			end;
 		Error ->
 			Error
 	end.
@@ -62,7 +76,7 @@ stop_session(Session) ->
 	{ok, FSM} = gen_server:call(Session, get_fsm),
 	gen_billy_session_c:reply_unbind(FSM, [{reason, normal}]),
 	{ok, unbound} = gen_fsm:sync_send_all_state_event(FSM, wait_until_st_unbound, infinity),
-	gen_billy_session_c:reply_bye(FSM, []).
+	gen_server:cast(Session, disconnect).
 
 start_transaction(Session) ->
 	gen_server:call(Session, start_transaction).
@@ -96,8 +110,16 @@ handle_call(start_transaction, _From, _FSM, State = #state{last_trans_id = Trans
 handle_call(get_fsm, _From, FSM, State = #state{}) ->
 	{reply, {ok, FSM}, State};
 
+handle_call(wait_for_bind_result, From, _FSM, State = #state{}) ->
+	{noreply, State#state{bind_result_callback = From}};
+
 handle_call(Request, _From, _FSM, State = #state{}) ->
 	{stop, {bad_arg, Request}, State}.
+
+handle_cast(disconnect, FSM, State = #state{}) ->
+	gen_billy_session_c:reply_bye(FSM, []),
+	?log_debug("sending bye...", []),
+	{stop, normal, State};
 
 handle_cast(Request, _FSM, State = #state{}) ->
 	{stop, {bad_arg, Request}, State}.
@@ -114,14 +136,18 @@ handle_hello(#billy_session_hello{}, FSM, State = #state{
 	?log_debug("sending bind request...", []),
 	{noreply, State}.
 
-handle_bind_accept(#billy_session_bind_response{}, _FSM, State) ->
+handle_bind_accept(#billy_session_bind_response{}, _FSM, State = #state{
+	bind_result_callback = ReplyTo
+}) ->
 	?log_debug("bind response accepted", []),
+	gen_server:reply(ReplyTo, {ok, accepted}),
 	{noreply, State}.
 
-handle_bind_reject(#billy_session_bind_response{}, FSM, State) ->
+handle_bind_reject(#billy_session_bind_response{}, FSM, State = #state{
+	bind_result_callback = ReplyTo
+}) ->
 	?log_debug("bind response rejected", []),
-	gen_billy_session_c:reply_bye(FSM, []),
-	?log_debug("sending bye...", []),
+	gen_server:reply(ReplyTo, {ok, rejected}),
 	{noreply, State}.
 
 handle_require_unbind(#billy_session_require_unbind{}, _FSM, State) ->
@@ -131,6 +157,7 @@ handle_unbind_response(#billy_session_unbind_response{}, _FSM, State) ->
 	{noreply, State}.
 
 handle_bye(#billy_session_bye{}, _FSM, State) ->
+
 	{noreply, State}.
 
 handle_data_pdu(Data = #billy_session_data_pdu{}, _FSM, State) ->
