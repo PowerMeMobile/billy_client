@@ -4,7 +4,7 @@
 
 %% API
 -export([
-	start_link/2,
+	start_link/4,
 
 	start_session/4,
 	stop_session/1,
@@ -15,7 +15,7 @@
 
 %% gen_billy_session_c callbacks
 -export([
-	init/2,
+	init/1,
 	handle_call/4,
 	handle_cast/3,
 
@@ -32,6 +32,8 @@
 -include_lib("billy_common/include/billy_session_piqi.hrl").
 
 -record(state, {
+	client_id,
+	client_pw,
 	last_trans_id
 }).
 
@@ -39,50 +41,38 @@
 %% API
 %% ===================================================================
 
-start_link(Sock, Args) ->
-	gen_billy_session_c:start_link(Sock, ?MODULE, Args).
+start_link(Host, Port, ClientId, ClientPw) ->
+	gen_billy_session_c:start_link(?MODULE, [Host, Port, ClientId, ClientPw]).
 
 start_session(Host, Port, ClientId, ClientPw) ->
 	et:trace_me(85, client, server, connect, []),
-
-	{ok, Socket} = gen_tcp:connect(Host, Port, [binary, {active, false}]),
-	{ok, Session} = billy_client_session_sup:start_session(Socket),
-	{ok, FSM} = gen_server:call(Session, get_fsm),
-	?log_debug("passing control over ~p to ~p", [Socket, FSM]),
-	ok = gen_tcp:controlling_process(Socket, FSM),
-	inet:setopts(Socket, [{active, once}]),
-
-	{ok, unbound} = gen_fsm:sync_send_all_state_event(FSM, wait_until_st_unbound, infinity),
-	%?log_debug("state unbound got...", []),
-	gen_billy_session_c:reply_bind(Session, [
-		{client_id, ClientId},
-		{client_pw, ClientPw}
-	]),
-	{ok, bound} = gen_fsm:sync_send_all_state_event(FSM, wait_until_st_bound, infinity),
-	%?log_debug("state bound got...", []),
-
+	{ok, Session} = billy_client_session_sup:start_session(Host, Port, ClientId, ClientPw),
 	{ok, Session}.
 
 stop_session(Session) ->
 	et:trace_me(85, client, server, disconnect, []),
-
-	gen_billy_session_c:reply_unbind(Session, [{reason, normal}]),
 	{ok, FSM} = gen_server:call(Session, get_fsm),
+	gen_billy_session_c:reply_unbind(FSM, [{reason, normal}]),
 	{ok, unbound} = gen_fsm:sync_send_all_state_event(FSM, wait_until_st_unbound, infinity),
-	gen_billy_session_c:reply_bye(Session, []).
+	gen_billy_session_c:reply_bye(FSM, []).
 
 start_transaction(Session) ->
 	gen_server:call(Session, start_transaction).
 
 send(Session, ResponseBin) ->
-	gen_billy_session_c:reply_data_pdu(Session, ResponseBin).
+	{ok, FSM} = gen_server:call(Session, get_fsm),
+	gen_billy_session_c:reply_data_pdu(FSM, ResponseBin).
 
 %% ===================================================================
 %% gen_billy_session_c callbacks
 %% ===================================================================
 
-init(_Args, _FSM) ->
-	{ok, #state{last_trans_id = 0}}.
+init([ClientId, ClientPw]) ->
+	{ok, #state{
+		client_id = ClientId,
+		client_pw = ClientPw,
+		last_trans_id = 0
+	}}.
 
 handle_call(start_transaction, _From, _FSM, State = #state{last_trans_id = TransId}) ->
 	NewTransId =
@@ -104,13 +94,26 @@ handle_call(Request, _From, _FSM, State = #state{}) ->
 handle_cast(Request, _FSM, State = #state{}) ->
 	{stop, {bad_arg, Request}, State}.
 
-handle_hello(#billy_session_hello{}, _FSM, State) ->
+handle_hello(#billy_session_hello{}, FSM, State = #state{
+	client_id = ClientId,
+	client_pw = ClientPw
+}) ->
+	?log_debug("got hello...", []),
+	gen_billy_session_c:reply_bind(FSM, [
+		{client_id, ClientId},
+		{client_pw, ClientPw}
+	]),
+	?log_debug("sending bind request...", []),
 	{noreply, State}.
 
 handle_bind_accept(#billy_session_bind_response{}, _FSM, State) ->
+	?log_debug("bind response accepted", []),
 	{noreply, State}.
 
-handle_bind_reject(#billy_session_bind_response{}, _FSM, State) ->
+handle_bind_reject(#billy_session_bind_response{}, FSM, State) ->
+	?log_debug("bind response rejected", []),
+	gen_billy_session_c:reply_bye(FSM, []),
+	?log_debug("sending bye...", []),
 	{noreply, State}.
 
 handle_require_unbind(#billy_session_require_unbind{}, _FSM, State) ->
