@@ -67,6 +67,10 @@
 start_link({SessionPid, TransactionId}) ->
 	gen_fsm:start_link(?MODULE, {SessionPid, TransactionId}, []).
 
+%%
+%% Client calls
+%%
+
 -spec start_transaction(billy_transaction_id()) -> {ok, TransactionSrv::pid()}.
 start_transaction({SessionPid, TransactionId}) ->
 	billy_client_transaction_sup:start_transaction({SessionPid, TransactionId}).
@@ -82,6 +86,10 @@ commit(TransactionSrv) ->
 -spec rollback(billy_transaction_srv()) -> term().
 rollback(TransactionSrv) ->
 	gen_fsm:sync_send_event(TransactionSrv, rollback).
+
+%%
+%% Server responses
+%%
 
 -spec reserved(billy_transaction_id(), term()) -> ok.
 reserved({SessionPid, TransactionId}, Result) ->
