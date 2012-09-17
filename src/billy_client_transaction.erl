@@ -5,14 +5,13 @@
 %% API
 -export([
 	start_link/1,
-	start/1,
-	get/1,
+	start_transaction/1,
 	reserve/3,
-	reserved/1,
+	reserved/2,
 	commit/1,
-	commited/1,
+	commited/2,
 	rollback/1,
-	rolledback/1
+	rolledback/2
 ]).
 
 %% gen_fsm callbacks
@@ -52,173 +51,189 @@
 -spec st_reserved(gen_fsm_event(), gen_fsm_from(), gen_fsm_state_data()) -> gen_fsm_handle_sync_event_result().
 
 -record(state, {
-	tranid,
-	sesspid,
+	session_pid,
+	transaction_id,
 	caller
 }).
 
--type billy_transaction_transaction_id() :: {binary(), integer()}.
+-type billy_transaction_id() :: {SessionPid::pid(), TransactionId::integer()}.
+-type billy_transaction_srv() :: TransactionSrv::pid().
 
 %% ===================================================================
 %% API
 %% ===================================================================
 
--spec start_link(billy_transaction_transaction_id()) -> {ok, pid()}.
-start_link({SessionID, TranID}) ->
-	gen_fsm:start_link(?MODULE, {SessionID, TranID}, []).
+-spec start_link(billy_transaction_id()) -> {ok, pid()}.
+start_link({SessionPid, TransactionId}) ->
+	gen_fsm:start_link(?MODULE, {SessionPid, TransactionId}, []).
 
--spec start(binary()) -> {ok, binary()}.
-start({SessionPID, TranID}) ->
-	{ok, TranPid} = supervisor:start_child(billy_client_transaction_sup, [{SessionPID, TranID}]),
-	{ok, TranPid}.
+-spec start_transaction(billy_transaction_id()) -> {ok, TransactionSrv::pid()}.
+start_transaction({SessionPid, TransactionId}) ->
+	billy_client_transaction_sup:start_transaction({SessionPid, TransactionId}).
 
--spec get(billy_transaction_transaction_id()) -> {ok, pid()} | {error, no_transaction}.
-get({SessionPID, TranID}) ->
-	case gproc:lookup_pids({n, l, {?MODULE, {SessionPID, TranID}} }) of
-		[TranSrv] ->
-			{ok, TranSrv};
-		[] ->
-			{error, no_transaction}
-	end.
+-spec reserve(billy_transaction_srv(), integer(), term()) -> term().
+reserve(TransactionSrv, CustomerId, Container) ->
+	gen_fsm:sync_send_event(TransactionSrv, {reserve, CustomerId, Container}).
 
--spec reserve(billy_transaction_transaction_id(), integer(), term()) -> term().
-reserve(TranSrv, CID, Container) ->
-	gen_fsm:sync_send_event(TranSrv, {reserve, CID, Container}).
+-spec commit(billy_transaction_srv()) -> term().
+commit(TransactionSrv) ->
+	gen_fsm:sync_send_event(TransactionSrv, commit).
 
--spec commit(billy_transaction_transaction_id()) -> term().
-commit(TranSrv) ->
-	gen_fsm:sync_send_event(TranSrv, commit).
+-spec rollback(billy_transaction_srv()) -> term().
+rollback(TransactionSrv) ->
+	gen_fsm:sync_send_event(TransactionSrv, rollback).
 
--spec rollback(billy_transaction_transaction_id()) -> term().
-rollback(TranSrv) ->
-	gen_fsm:sync_send_event(TranSrv, rollback).
+-spec reserved(billy_transaction_id(), term()) -> ok.
+reserved({SessionPid, TransactionId}, Result) ->
+	{ok, TransactionSrv} = get_server({SessionPid, TransactionId}),
+	gen_fsm:send_event(TransactionSrv, {reserved, Result}).
 
-reserved({SessionPID, TranID, Result}) ->
-	{ok, TranSrv} = ?MODULE:get({SessionPID, TranID}),
-	gen_fsm:send_event(TranSrv, {reserved, Result}).
+-spec commited(billy_transaction_id(), term()) -> ok.
+commited({SessionPid, TransactionId}, Result) ->
+	{ok, TransactionSrv} = get_server({SessionPid, TransactionId}),
+	gen_fsm:send_event(TransactionSrv, {commited, Result}).
 
-commited({SessionPID, TranID, Result}) ->
-	{ok, TranSrv} = ?MODULE:get({SessionPID, TranID}),
-	gen_fsm:send_event(TranSrv, {commited, Result}).
-
-rolledback({SessionPID, TranID, Result}) ->
-	{ok, TranSrv} = ?MODULE:get({SessionPID, TranID}),
-	gen_fsm:send_event(TranSrv, {rolledback, Result}).
+-spec rolledback(billy_transaction_id(), term()) -> ok.
+rolledback({SessionPid, TransactionId}, Result) ->
+	{ok, TransactionSrv} = get_server({SessionPid, TransactionId}),
+	gen_fsm:send_event(TransactionSrv, {rolledback, Result}).
 
 %% ===================================================================
 %% gen_fsm callbacks
 %% ===================================================================
 
-init({SessionPID, TranID}) ->
+init({SessionPid, TransactionId}) ->
 	?set_pname("billy_client_transaction"),
-	gproc:add_local_name({?MODULE, {SessionPID, TranID}}),
-	{ok, st_initial, #state{tranid = TranID, sesspid = SessionPID}, ?TRANSACTION_TIMEOUT}.
+	gproc:add_local_name({?MODULE, {SessionPid, TransactionId}}),
+	{ok, st_initial, #state{session_pid = SessionPid, transaction_id = TransactionId}, ?TRANSACTION_TIMEOUT}.
 
-handle_event(Event, _StateName, StateData) ->
-	{stop, {bad_arg, Event}, StateData}.
+handle_event(Event, _StateName, State) ->
+	{stop, {bad_arg, Event}, State}.
 
-handle_sync_event(Event, _From, _StateName, StateData) ->
-	{stop, {bad_arg, Event}, bad_arg, StateData}.
+handle_sync_event(Event, _From, _StateName, State) ->
+	{stop, {bad_arg, Event}, bad_arg, State}.
 
-handle_info(Info, _StateName, StateData) ->
-	{stop, {bad_arg, Info}, StateData}.
+handle_info(Info, _StateName, State) ->
+	{stop, {bad_arg, Info}, State}.
 
-code_change(_OldVsn, StateName, StateData, _Extra) ->
-	{ok, StateName, StateData}.
+code_change(_OldVsn, StateName, State, _Extra) ->
+	{ok, StateName, State}.
 
-terminate(_Reason, _StateName, _StateData) ->
+terminate(_Reason, _StateName, _State) ->
 	ok.
 
 %% ===================================================================
 %% INITIAL STATE
 %% ===================================================================
 
-st_initial(timeout, StateData = #state{}) ->
+st_initial(timeout, State = #state{}) ->
 	?log_debug("timeout occured...", []),
-	{stop, normal, StateData};
+	{stop, normal, State};
 
-st_initial(Event, StateData) ->
-	{stop, {bad_arg, Event}, StateData}.
+st_initial(Event, State) ->
+	{stop, {bad_arg, Event}, State}.
 
-st_initial({reserve, CID, Container}, From, StateData = #state{ tranid = TranID, sesspid = SessPid }) ->
-	billy_client_transaction_dispatcher:reserve(TranID, SessPid, CID, Container),
-	{next_state, st_reserving, StateData#state{caller = From}, ?TRANSACTION_TIMEOUT};
+st_initial({reserve, CustomerId, Container}, From, State = #state{
+	session_pid = SessionPid,
+	transaction_id = TransactionId
+}) ->
+	billy_client_transaction_dispatcher:reserve(SessionPid, TransactionId, CustomerId, Container),
+	{next_state, st_reserving, State#state{caller = From}, ?TRANSACTION_TIMEOUT};
 
-st_initial(Event, _From, StateData) ->
-	{stop, {bad_arg, Event}, {error, bad_arg}, StateData}.
+st_initial(Event, _From, State) ->
+	{stop, {bad_arg, Event}, {error, bad_arg}, State}.
 
 %% ===================================================================
 %% RESERVING STATE
 %% ===================================================================
 
-st_reserving(timeout, StateData = #state{}) ->
+st_reserving(timeout, State = #state{}) ->
 	?log_debug("timeout occured...", []),
-	{stop, normal, StateData};
+	{stop, normal, State};
 
-st_reserving({reserved, Result}, StateData = #state{caller = Caller }) ->
+st_reserving({reserved, Result}, State = #state{caller = Caller}) ->
 	gen_fsm:reply(Caller, {ok, Result}),
-	{next_state, st_reserved, StateData, ?TRANSACTION_TIMEOUT};
+	{next_state, st_reserved, State, ?TRANSACTION_TIMEOUT};
 
-st_reserving(Event, StateData) ->
-	{stop, {bad_arg, Event}, StateData}.
+st_reserving(Event, State) ->
+	{stop, {bad_arg, Event}, State}.
 
-st_reserving(Event, _From, StateData) ->
-	{stop, {bad_arg, Event}, {error, bad_arg}, StateData}.
+st_reserving(Event, _From, State) ->
+	{stop, {bad_arg, Event}, {error, bad_arg}, State}.
 
 %% ===================================================================
 %% RESERVED STATE
 %% ===================================================================
 
-st_reserved(timeout, StateData = #state{}) ->
+st_reserved(timeout, State = #state{}) ->
 	?log_debug("timeout occured...", []),
-	{stop, normal, StateData};
+	{stop, normal, State};
 
-st_reserved(Event, StateData) ->
-	{stop, {bad_arg, Event}, StateData}.
+st_reserved(Event, State) ->
+	{stop, {bad_arg, Event}, State}.
 
-st_reserved(commit, From, StateData = #state{ sesspid = SessPid, tranid = TranID}) ->
-	billy_client_transaction_dispatcher:commit(SessPid, TranID),
-	{next_state, st_commiting, StateData#state{caller = From}, ?TRANSACTION_TIMEOUT};
+st_reserved(commit, From, State = #state{
+	session_pid = SessionPid,
+	transaction_id = TransactionId
+}) ->
+	billy_client_transaction_dispatcher:commit(SessionPid, TransactionId),
+	{next_state, st_commiting, State#state{caller = From}, ?TRANSACTION_TIMEOUT};
 
-st_reserved(rollback, From, StateData = #state{sesspid = SessPid, tranid = TranID}) ->
-	billy_client_transaction_dispatcher:rollback(SessPid, TranID),
-	{next_state, st_rollingback, StateData#state{caller = From}, ?TRANSACTION_TIMEOUT};
+st_reserved(rollback, From, State = #state{
+	session_pid = SessionPid,
+	transaction_id = TransactionId
+}) ->
+	billy_client_transaction_dispatcher:rollback(SessionPid, TransactionId),
+	{next_state, st_rollingback, State#state{caller = From}, ?TRANSACTION_TIMEOUT};
 
-st_reserved(Event, _From, StateData) ->
-	{stop, {bad_arg, Event}, {error, bad_arg}, StateData}.
+st_reserved(Event, _From, State) ->
+	{stop, {bad_arg, Event}, {error, bad_arg}, State}.
 
 %% ===================================================================
 %% COMMITING STATE
 %% ===================================================================
 
-st_commiting(timeout, StateData = #state{}) ->
+st_commiting(timeout, State = #state{}) ->
 	?log_debug("timeout occured...", []),
-	{stop, normal, StateData};
+	{stop, normal, State};
 
-st_commiting({commited, Result}, StateData = #state{caller = Caller}) ->
+st_commiting({commited, Result}, State = #state{caller = Caller}) ->
 	gen_fsm:reply(Caller, {ok, {commited, Result}}),
-	{stop, normal, StateData};
+	{stop, normal, State};
 
-st_commiting(Event, StateData) ->
-	{stop, {bad_arg, Event}, StateData}.
+st_commiting(Event, State) ->
+	{stop, {bad_arg, Event}, State}.
 
-st_commiting(Event, _From, StateData) ->
-	{stop, {bad_arg, Event}, {error, bad_arg}, StateData}.
+st_commiting(Event, _From, State) ->
+	{stop, {bad_arg, Event}, {error, bad_arg}, State}.
 
 %% ===================================================================
 %% ROLLINGBACK STATE
 %% ===================================================================
 
-st_rollingback(timeout, StateData = #state{}) ->
+st_rollingback(timeout, State = #state{}) ->
 	?log_debug("timeout occured...", []),
-	{stop, normal, StateData};
+	{stop, normal, State};
 
-st_rollingback({rolledback, Result}, StateData = #state{caller = Caller}) ->
+st_rollingback({rolledback, Result}, State = #state{caller = Caller}) ->
 	gen_fsm:reply(Caller, {ok, {rolledback, Result}}),
-	{stop, normal, StateData};
+	{stop, normal, State};
 
-st_rollingback(Event, StateData) ->
-	{stop, {bad_arg, Event}, StateData}.
+st_rollingback(Event, State) ->
+	{stop, {bad_arg, Event}, State}.
 
-st_rollingback(Event, _From, StateData) ->
-	{stop, {bad_arg, Event}, {error, bad_arg}, StateData}.
+st_rollingback(Event, _From, State) ->
+	{stop, {bad_arg, Event}, {error, bad_arg}, State}.
+
+%% ===================================================================
+%% Internal
+%% ===================================================================
+
+-spec get_server(billy_transaction_id()) -> {ok, pid()} | {error, no_transaction}.
+get_server({SessionPid, TransactionId}) ->
+	case gproc:lookup_pids({n, l, {?MODULE, {SessionPid, TransactionId}}}) of
+		[TransactionSrv] ->
+			{ok, TransactionSrv};
+		[] ->
+			{error, no_transaction}
+	end.

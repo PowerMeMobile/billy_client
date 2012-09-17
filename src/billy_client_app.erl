@@ -12,10 +12,7 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
-	?log_debug("start 1", []),
-    Ret = billy_client_sup:start_link(),
-    ?log_debug("billy_client_app:start 2 ~p", [Ret]),
-    Ret.
+    billy_client_sup:start_link().
 
 stop(_State) ->
     ok.

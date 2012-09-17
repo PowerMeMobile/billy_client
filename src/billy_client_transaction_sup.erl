@@ -3,7 +3,10 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/0]).
+-export([
+	start_link/0,
+	start_transaction/1
+]).
 
 %% supervisor callbacks
 -export([init/1]).
@@ -15,6 +18,9 @@
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
+start_transaction({SessionPid, TransactionId}) ->
+	supervisor:start_child(?MODULE, [{SessionPid, TransactionId}]).
+
 %% ===================================================================
 %% supervisor callbacks
 %% ===================================================================
@@ -25,4 +31,3 @@ init([]) ->
 			{billy_client_transaction, start_link, []},
 			temporary, 20000, worker, [billy_client_transaction]}
     ]}}.
-

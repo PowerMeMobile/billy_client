@@ -35,7 +35,8 @@
 	client_id,
 	client_pw,
 	last_trans_id,
-	bind_result_callback
+	bind_result_callback,
+	unbind_result_callback
 }).
 
 %% ===================================================================
@@ -50,19 +51,19 @@ start_session(Host, Port, ClientId, ClientPw) ->
 	case gen_tcp:connect(Host, Port, [binary, {active, false}]) of
 		{ok, Socket} ->
 			%% start new session and pass socket to it.
-			{ok, Session} = billy_client_session_sup:start_session(Socket, ClientId, ClientPw),
-			{ok, FSM} = gen_server:call(Session, get_fsm),
+			{ok, SessionPid} = billy_client_session_sup:start_session(Socket, ClientId, ClientPw),
+			{ok, FSM} = gen_server:call(SessionPid, get_fsm),
 			ok = gen_tcp:controlling_process(Socket, FSM),
 			inet:setopts(Socket, [{active, once}]),
 			%% wait for bind result.
-			case gen_server:call(Session, wait_for_bind_result, 10000) of
+			case gen_server:call(SessionPid, wait_for_bind_result, 10000) of
 				{ok, accepted} ->
 					%% all is ok.
-					{ok, Session};
+					{ok, SessionPid};
 				{ok, rejected} ->
 					et:trace_me(85, client, server, disconnect, []),
 					%% stop the session.
-					gen_server:cast(Session, disconnect),
+					gen_server:cast(SessionPid, disconnect),
 					{error, invalid_credentials};
 				Error ->
 					Error
@@ -71,18 +72,19 @@ start_session(Host, Port, ClientId, ClientPw) ->
 			Error
 	end.
 
-stop_session(Session) ->
+stop_session(SessionPid) ->
 	et:trace_me(85, client, server, disconnect, []),
-	{ok, FSM} = gen_server:call(Session, get_fsm),
+	{ok, FSM} = gen_server:call(SessionPid, get_fsm),
 	gen_billy_session_c:reply_unbind(FSM, [{reason, normal}]),
-	{ok, unbound} = gen_fsm:sync_send_all_state_event(FSM, wait_until_st_unbound, infinity),
-	gen_server:cast(Session, disconnect).
+	%% wait for unbind result.
+	{ok, unbound} = gen_server:call(SessionPid, wait_for_unbind_result, 10000),
+	gen_server:cast(SessionPid, disconnect).
 
-start_transaction(Session) ->
-	gen_server:call(Session, start_transaction).
+start_transaction(SessionPid) ->
+	gen_server:call(SessionPid, start_transaction).
 
-send(Session, ResponseBin) ->
-	{ok, FSM} = gen_server:call(Session, get_fsm),
+send(SessionPid, ResponseBin) ->
+	{ok, FSM} = gen_server:call(SessionPid, get_fsm),
 	gen_billy_session_c:reply_data_pdu(FSM, ResponseBin).
 
 %% ===================================================================
@@ -104,7 +106,7 @@ handle_call(start_transaction, _From, _FSM, State = #state{last_trans_id = Trans
 			true ->
 				1
 		end,
-	{ok, Pid} = billy_client_transaction:start({self(), NewTransId}),
+	{ok, Pid} = billy_client_transaction:start_transaction({self(), NewTransId}),
 	{reply, {ok, Pid}, State#state{last_trans_id = NewTransId}};
 
 handle_call(get_fsm, _From, FSM, State = #state{}) ->
@@ -112,6 +114,9 @@ handle_call(get_fsm, _From, FSM, State = #state{}) ->
 
 handle_call(wait_for_bind_result, From, _FSM, State = #state{}) ->
 	{noreply, State#state{bind_result_callback = From}};
+
+handle_call(wait_for_unbind_result, From, _FSM, State = #state{}) ->
+	{noreply, State#state{unbind_result_callback = From}};
 
 handle_call(Request, _From, _FSM, State = #state{}) ->
 	{stop, {bad_arg, Request}, State}.
@@ -148,18 +153,21 @@ handle_bind_reject(#billy_session_bind_response{}, FSM, State = #state{
 }) ->
 	?log_debug("bind response rejected", []),
 	gen_server:reply(ReplyTo, {ok, rejected}),
-	{noreply, State}.
+	{noreply, State#state{bind_result_callback = undefined}}.
 
 handle_require_unbind(#billy_session_require_unbind{}, _FSM, State) ->
 	{noreply, State}.
 
-handle_unbind_response(#billy_session_unbind_response{}, _FSM, State) ->
-	{noreply, State}.
+handle_unbind_response(#billy_session_unbind_response{}, _FSM, State = #state{
+	unbind_result_callback = ReplyTo
+}) ->
+	?log_debug("unbind response", []),
+	gen_server:reply(ReplyTo, {ok, unbound}),
+	{noreply, State#state{unbind_result_callback = undefined}}.
 
 handle_bye(#billy_session_bye{}, _FSM, State) ->
-
 	{noreply, State}.
 
-handle_data_pdu(Data = #billy_session_data_pdu{}, _FSM, State) ->
-	billy_client_transaction_dispatcher:dispatch(self(), Data),
+handle_data_pdu(ResponseData = #billy_session_data_pdu{}, _FSM, State) ->
+	billy_client_transaction_dispatcher:dispatch_response(self(), ResponseData),
 	{noreply, State}.
