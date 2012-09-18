@@ -36,7 +36,7 @@
 
 % -spec start_link(pid()) -> {ok, pid()}.
 start_link() ->
-	gen_server:start_link(?MODULE, {}, []).
+	gen_server:start_link(?MODULE, [], []).
 
 reserve(SessionPid, TransactionId, CustomerId, Container) ->
 	{ok, PiqiContainer} = re_pack(Container),
@@ -70,7 +70,7 @@ dispatch_response(SessionPid, {_, BinData}) ->
 %% gen_server callbacks
 %% ===================================================================
 
-init({}) ->
+init([]) ->
 	?log_debug("init", []),
 	{ok, #state{}}.
 
