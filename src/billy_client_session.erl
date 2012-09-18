@@ -129,11 +129,18 @@ handle_cast(disconnect, FSM, State = #state{}) ->
 handle_cast(Request, _FSM, State = #state{}) ->
 	{stop, {bad_arg, Request}, State}.
 
-handle_hello(#billy_session_hello{}, FSM, State = #state{
+handle_hello(#billy_session_hello{
+	server_version = ServerVersion,
+	session_id = SessionId,
+	bind_request_timeout = Timeout
+}, FSM, State = #state{
 	client_id = ClientId,
 	client_pw = ClientPw
 }) ->
 	?log_debug("got hello...", []),
+	?log_debug("server version: ~p", [ServerVersion]),
+	?log_debug("session id: ~p", [SessionId]),
+	?log_debug("timeout: ~p", [Timeout]),
 	gen_billy_session_c:reply_bind(FSM, [
 		{client_id, ClientId},
 		{client_pw, ClientPw}
