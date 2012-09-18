@@ -5,12 +5,16 @@
 %% API
 -export([
 	start_link/1,
+
+	% client calls
 	start_transaction/1,
 	reserve/3,
-	reserved/2,
 	commit/1,
-	commited/2,
 	rollback/1,
+
+	% server responses
+	reserved/2,
+	commited/2,
 	rolledback/2
 ]).
 
@@ -57,7 +61,6 @@
 }).
 
 -type billy_transaction_id() :: {SessionPid::pid(), TransactionId::integer()}.
--type billy_transaction_srv() :: TransactionSrv::pid().
 
 %% ===================================================================
 %% API
@@ -65,27 +68,27 @@
 
 -spec start_link(billy_transaction_id()) -> {ok, pid()}.
 start_link({SessionPid, TransactionId}) ->
-	gen_fsm:start_link(?MODULE, {SessionPid, TransactionId}, []).
+	gen_fsm:start_link(?MODULE, [{SessionPid, TransactionId}], []).
 
 %%
 %% Client calls
 %%
 
--spec start_transaction(billy_transaction_id()) -> {ok, TransactionSrv::pid()}.
+-spec start_transaction(billy_transaction_id()) -> {ok, TransactionPid::pid()}.
 start_transaction({SessionPid, TransactionId}) ->
 	billy_client_transaction_sup:start_transaction({SessionPid, TransactionId}).
 
--spec reserve(billy_transaction_srv(), integer(), term()) -> term().
-reserve(TransactionSrv, CustomerId, Container) ->
-	gen_fsm:sync_send_event(TransactionSrv, {reserve, CustomerId, Container}).
+-spec reserve(pid(), integer(), term()) -> term().
+reserve(TransactionPid, CustomerId, Container) ->
+	gen_fsm:sync_send_event(TransactionPid, {reserve, CustomerId, Container}).
 
--spec commit(billy_transaction_srv()) -> term().
-commit(TransactionSrv) ->
-	gen_fsm:sync_send_event(TransactionSrv, commit).
+-spec commit(pid()) -> term().
+commit(TransactionPid) ->
+	gen_fsm:sync_send_event(TransactionPid, commit).
 
--spec rollback(billy_transaction_srv()) -> term().
-rollback(TransactionSrv) ->
-	gen_fsm:sync_send_event(TransactionSrv, rollback).
+-spec rollback(pid()) -> term().
+rollback(TransactionPid) ->
+	gen_fsm:sync_send_event(TransactionPid, rollback).
 
 %%
 %% Server responses
@@ -93,24 +96,24 @@ rollback(TransactionSrv) ->
 
 -spec reserved(billy_transaction_id(), term()) -> ok.
 reserved({SessionPid, TransactionId}, Result) ->
-	{ok, TransactionSrv} = get_server({SessionPid, TransactionId}),
-	gen_fsm:send_event(TransactionSrv, {reserved, Result}).
+	{ok, TransactionPid} = get_transaction_pid({SessionPid, TransactionId}),
+	gen_fsm:send_event(TransactionPid, {reserved, Result}).
 
 -spec commited(billy_transaction_id(), term()) -> ok.
 commited({SessionPid, TransactionId}, Result) ->
-	{ok, TransactionSrv} = get_server({SessionPid, TransactionId}),
-	gen_fsm:send_event(TransactionSrv, {commited, Result}).
+	{ok, TransactionPid} = get_transaction_pid({SessionPid, TransactionId}),
+	gen_fsm:send_event(TransactionPid, {commited, Result}).
 
 -spec rolledback(billy_transaction_id(), term()) -> ok.
 rolledback({SessionPid, TransactionId}, Result) ->
-	{ok, TransactionSrv} = get_server({SessionPid, TransactionId}),
-	gen_fsm:send_event(TransactionSrv, {rolledback, Result}).
+	{ok, TransactionPid} = get_transaction_pid({SessionPid, TransactionId}),
+	gen_fsm:send_event(TransactionPid, {rolledback, Result}).
 
 %% ===================================================================
 %% gen_fsm callbacks
 %% ===================================================================
 
-init({SessionPid, TransactionId}) ->
+init([{SessionPid, TransactionId}]) ->
 	?set_pname("billy_client_transaction"),
 	gproc:add_local_name({?MODULE, {SessionPid, TransactionId}}),
 	{ok, st_initial, #state{session_pid = SessionPid, transaction_id = TransactionId}, ?TRANSACTION_TIMEOUT}.
@@ -237,11 +240,11 @@ st_rollingback(Event, _From, State) ->
 %% Internal
 %% ===================================================================
 
--spec get_server(billy_transaction_id()) -> {ok, pid()} | {error, no_transaction}.
-get_server({SessionPid, TransactionId}) ->
+-spec get_transaction_pid(billy_transaction_id()) -> {ok, pid()} | {error, no_transaction}.
+get_transaction_pid({SessionPid, TransactionId}) ->
 	case gproc:lookup_pids({n, l, {?MODULE, {SessionPid, TransactionId}}}) of
-		[TransactionSrv] ->
-			{ok, TransactionSrv};
+		[TransactionPid] ->
+			{ok, TransactionPid};
 		[] ->
 			{error, no_transaction}
 	end.

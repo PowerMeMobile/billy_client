@@ -22,33 +22,33 @@
 	ClientId::binary(),
 	ClientPw::binary()
 ) ->
-	{ok, SessionId::any()} | {error, Reason::any()}.
+	{ok, SessionPid::pid()} | {error, Reason::any()}.
 start_session(Host, Port, ClientId, ClientPw) ->
 	billy_client_session:start_session(Host, Port, ClientId, ClientPw).
 
--spec stop_session(SessionId::any()) -> ok | {error, Reason::any()}.
-stop_session(SessionId) ->
-	billy_client_session:stop_session(SessionId).
+-spec stop_session(SessionPid::any()) -> ok | {error, Reason::any()}.
+stop_session(SessionPid) ->
+	billy_client_session:stop_session(SessionPid).
 
--spec start_transaction(SessionId::any()) -> {ok, TransactionId::any()} | {error, Reason::any()}.
-start_transaction(SessionId) ->
-	billy_client_session:start_transaction(SessionId).
+-spec start_transaction(SessionPid::any()) -> {ok, TransactionPid::any()} | {error, Reason::any()}.
+start_transaction(SessionPid) ->
+	billy_client_session:start_transaction(SessionPid).
 
 -spec reserve(
-	TransactionId::any(),
+	TransactionPid::pid(),
 	CustomerId::any(),
 	SvcContainer::#svc_container{}
 ) ->
 	{ok, accepted} | {ok, {rejected, Reason::any()}} | {error, Reason::any()}.
-reserve(TransactionId, CustomerId, SvcContainer) ->
-	billy_client_transaction:reserve(TransactionId, CustomerId, SvcContainer).
+reserve(TransactionPid, CustomerId, SvcContainer) ->
+	billy_client_transaction:reserve(TransactionPid, CustomerId, SvcContainer).
 
--spec commit(TransactionId::any()) ->
+-spec commit(TransactionPid::pid()) ->
 	{ok, {commited, ok}} | {error, Reason::any()}.
-commit(TransactionId) ->
-	billy_client_transaction:commit(TransactionId).
+commit(TransactionPid) ->
+	billy_client_transaction:commit(TransactionPid).
 
--spec rollback(TransactionId::any()) ->
+-spec rollback(TransactionPid::pid()) ->
 	{ok, {rolledback, ok}} | {error, Reason::any()}.
-rollback(TransactionId) ->
-	billy_client_transaction:rollback(TransactionId).
+rollback(TransactionPid) ->
+	billy_client_transaction:rollback(TransactionPid).
