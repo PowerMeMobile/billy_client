@@ -6,28 +6,28 @@
 -include_lib("billy_common/include/service.hrl").
 
 t() ->
-	{ok, Session} = billy_client:start_session("127.0.0.1", 16062, <<"client1">>, <<"secureme!">>),
+	{ok, SessionId} = billy_client:start_session("127.0.0.1", 16062, <<"client1">>, <<"secureme!">>),
 
-	{ok, TransId1} = billy_client:start_transaction(Session),
+	{ok, TransId1} = billy_client:start_transaction(SessionId),
 	{ok, Container} = new_container(<<"sms_on">>, 10),
 	{ok, accepted} = billy_client:reserve(TransId1, 1, Container),
 	{ok, {commited, ok}} = billy_client:commit(TransId1),
 
-	{ok, TransId2} = billy_client:start_transaction(Session),
+	{ok, TransId2} = billy_client:start_transaction(SessionId),
 	{ok, Container} = new_container(<<"sms_on">>, 10),
 	{ok, accepted} = billy_client:reserve(TransId2, 1, Container),
 	{ok, {rolledback, ok}} = billy_client:rollback(TransId2),
 
-	ok = billy_client:stop_session(Session).
+	ok = billy_client:stop_session(SessionId).
 
 start_session() ->
 	billy_client:start_session("127.0.0.1", 16062, <<"client1">>, <<"secureme!">>).
 
-stop_session(Session) ->
-	billy_client:stop_session(Session).
+stop_session(SessionId) ->
+	billy_client:stop_session(SessionId).
 
-start_transaction(Session) ->
-	{ok, TransId} = billy_client:start_transaction(Session),
+start_transaction(SessionId) ->
+	{ok, TransId} = billy_client:start_transaction(SessionId),
 	{ok, TransId}.
 
 test_commit(TransId, CID) ->
@@ -61,13 +61,12 @@ start(StartSeqNum, EndSeqNum, TranQuantity, ThreadsQuantity) ->
 	?log_debug("[tc] Generating tasks...", []),
 	{ok, TaskList} = generate_cids(StartSeqNum, EndSeqNum, TranQuantity, ThreadsQuantity),
 	?log_debug("[tc] TaskList generated...~p", [TaskList]),
-	{ok, SessionPid} = billy_client:start_session("127.0.0.1", 16062, <<"client1">>, <<"secureme!">>),
-	?log_debug("SessionPid: ~p", [SessionPid]),
+	{ok, SessionId} = billy_client:start_session("127.0.0.1", 16062, <<"client1">>, <<"secureme!">>),
 	StartTime = now(),
 	CounterSrv = spawn_link(?MODULE, start_counter, [StartTime, TranQuantity]),
 	lists:foreach(
 		fun(Task) ->
-			spawn_link(?MODULE, start_thread, [Task, SessionPid, CounterSrv])
+			spawn_link(?MODULE, start_thread, [Task, SessionId, CounterSrv])
 		end,
 		TaskList).
 
@@ -107,27 +106,27 @@ gen_task(Task, CIDCnt, RandomFun, Set) ->
 			gen_task([NewCID | Task], CIDCnt - 1, RandomFun, NewSet)
 	end.
 
-start_thread(Task, SessionPid, CounterSrv) ->
+start_thread(Task, SessionId, CounterSrv) ->
 	lists:foreach(
 		fun(CID)->
-			start_transaction(CID, SessionPid, CounterSrv),
+			start_transaction(CID, SessionId, CounterSrv),
 			?log_debug(".", [])
 		end,
 		Task).
 
-start_transaction(CID, SessionPid, CounterSrv) ->
-	{ok, TransId} = billy_client:start_transaction(SessionPid),
+start_transaction(CID, SessionId, CounterSrv) ->
+	{ok, TransId} = billy_client:start_transaction(SessionId),
 	{ok, Container} = new_container(<<"sms_on">>, 10),
 	case billy_client:reserve(TransId, CID, Container) of
 		{ok, accepted} ->
-			% ?log_debug("Reserving accepted... ~p", [TransId]),
+			?log_debug("Reserving accepted... ~p", [TransId]),
 			% {ok, {commited, ok}} = billy_client:commit(TransId),
 			% ?log_debug("Commit complited... ", []);
 			{ok, {rolledback, ok}} = billy_client:rollback(TransId),
-			% ?log_debug("Rollingback complited: ~p", [now()]);
+			?log_debug("Rollingback completed: ~p", [now()]),
 			CounterSrv ! {report, rolledback};
-		{ok, {rejected, _Reason}} ->
-			% ?log_debug("Rejected! Reason: ~p", [Reason]);
+		{ok, {rejected, Reason}} ->
+			?log_debug("Rejected! Reason: ~p", [Reason]),
 			CounterSrv ! {report, rejected};
 		Any ->
 			?log_debug("[transaction] Error. Reserve request returned: ~p", [Any]),

@@ -6,9 +6,9 @@
 -export([
 	start_link/0,
 
-	reserve/4,
-	commit/2,
-	rollback/2,
+	reserve/3,
+	commit/1,
+	rollback/1,
 
 	dispatch_response/2
 ]).
@@ -28,6 +28,8 @@
 -include_lib("billy_common/include/service.hrl").
 -include_lib("billy_common/include/gen_server_spec.hrl").
 
+-type billy_transaction_id() :: {SessionId::binary(), TransactionId::integer()}.
+
 -record(state, {}).
 
 %% ===================================================================
@@ -38,7 +40,7 @@
 start_link() ->
 	gen_server:start_link(?MODULE, [], []).
 
-reserve(SessionPid, TransactionId, CustomerId, Container) ->
+reserve({SessionId, TransactionId}, CustomerId, Container) ->
 	{ok, PiqiContainer} = re_pack(Container),
 	ReserveRequest = #billy_transaction_reserve_request{
 	    transaction_id = TransactionId,
@@ -47,24 +49,24 @@ reserve(SessionPid, TransactionId, CustomerId, Container) ->
 	},
 	ReserveRequestDeepList = billy_transaction_piqi:gen_transaction({reserve_request, ReserveRequest}),
 	ResponseBin = list_to_binary(ReserveRequestDeepList),
-	billy_client_session:send(SessionPid, ResponseBin).
+	billy_client_session:send(SessionId, ResponseBin).
 
-commit(SessionPid, TransactionId)->
+commit({SessionId, TransactionId})->
 	Request = {commit_request, #billy_transaction_commit_request{transaction_id = TransactionId}},
 	RequestDeepList = billy_transaction_piqi:gen_transaction(Request),
 	ResponseBin = list_to_binary(RequestDeepList),
-	billy_client_session:send(SessionPid, ResponseBin).
+	billy_client_session:send(SessionId, ResponseBin).
 
-rollback(SessionPid, TransactionId)->
+rollback({SessionId, TransactionId})->
 	Request = {rollback_request, #billy_transaction_rollback_request{transaction_id = TransactionId}},
 	RequestDeepList = billy_transaction_piqi:gen_transaction(Request),
 	ResponseBin = list_to_binary(RequestDeepList),
-	billy_client_session:send(SessionPid, ResponseBin).
+	billy_client_session:send(SessionId, ResponseBin).
 
-% -spec dispatch_response(binary(), binary(), pid()) -> ok.
-dispatch_response(SessionPid, {_, BinData}) ->
+-spec dispatch_response(binary(), binary()) -> ok.
+dispatch_response(SessionId, {_, BinData}) ->
 	{ok, Pid} = billy_client_transaction_dispatcher_sup:start_dispatcher(),
-	gen_server:cast(Pid, {dispatch_response, SessionPid, BinData}).
+	gen_server:cast(Pid, {dispatch_response, SessionId, BinData}).
 
 %% ===================================================================
 %% gen_server callbacks
@@ -77,9 +79,9 @@ init([]) ->
 handle_call(Request, _From, State = #state{}) ->
 	{stop, {bad_arg, Request}, State}.
 
-handle_cast({dispatch_response, SessionPid, BinData}, State = #state{}) ->
+handle_cast({dispatch_response, SessionId, BinData}, State = #state{}) ->
 	{_TransactionType, TransactionData} = billy_transaction_piqi:parse_transaction(BinData),
-	dispatch_response_internal(SessionPid, TransactionData),
+	dispatch_response_internal(SessionId, TransactionData),
 	{stop, normal, State};
 
 handle_cast(Request, State = #state{}) ->
@@ -103,23 +105,23 @@ code_change(_OldVsn, State, _Extra) ->
   | billy_transaction_commit_response()
   | billy_transaction_rollback_response()) -> term().
 
-dispatch_response_internal(SessionPid, #billy_transaction_reserve_response{
+dispatch_response_internal(SessionId, #billy_transaction_reserve_response{
 	transaction_id = TransactionId,
 	result = Result
 }) ->
-	billy_client_transaction:reserved({SessionPid, TransactionId}, Result);
+	billy_client_transaction:reserved({SessionId, TransactionId}, Result);
 
-dispatch_response_internal(SessionPid, #billy_transaction_commit_response{
+dispatch_response_internal(SessionId, #billy_transaction_commit_response{
 	transaction_id = TransactionId,
 	result = Result
 }) ->
-	billy_client_transaction:commited({SessionPid, TransactionId}, Result);
+	billy_client_transaction:commited({SessionId, TransactionId}, Result);
 
-dispatch_response_internal(SessionPid, #billy_transaction_rollback_response{
+dispatch_response_internal(SessionId, #billy_transaction_rollback_response{
 	transaction_id = TransactionId,
 	result = Result
 }) ->
-	billy_client_transaction:rolledback({SessionPid, TransactionId}, Result).
+	billy_client_transaction:rolledback({SessionId, TransactionId}, Result).
 
 re_pack(#svc_container{
 	details = ListOfPackages

@@ -12,6 +12,8 @@
 
 -include_lib("billy_common/include/service.hrl").
 
+-type billy_transaction_id() :: {SessionId::binary(), TransactionId::integer()}.
+
 %% ===================================================================
 %% API
 %% ===================================================================
@@ -22,33 +24,34 @@
 	ClientId::binary(),
 	ClientPw::binary()
 ) ->
-	{ok, SessionPid::pid()} | {error, Reason::any()}.
+	{ok, SessionId::binary()} | {error, Reason::any()}.
 start_session(Host, Port, ClientId, ClientPw) ->
 	billy_client_session:start_session(Host, Port, ClientId, ClientPw).
 
--spec stop_session(SessionPid::any()) -> ok | {error, Reason::any()}.
-stop_session(SessionPid) ->
-	billy_client_session:stop_session(SessionPid).
+-spec stop_session(SessionId::binary()) -> ok | {error, Reason::any()}.
+stop_session(SessionId) ->
+	billy_client_session:stop_session(SessionId).
 
--spec start_transaction(SessionPid::any()) -> {ok, TransactionPid::any()} | {error, Reason::any()}.
-start_transaction(SessionPid) ->
-	billy_client_session:start_transaction(SessionPid).
+-spec start_transaction(SessionId::binary()) ->
+	{ok, TransactionId::billy_transaction_id()} | {error, Reason::any()}.
+start_transaction(SessionId) ->
+	billy_client_session:start_transaction(SessionId).
 
 -spec reserve(
-	TransactionPid::pid(),
+	TransactionId::billy_transaction_id(),
 	CustomerId::any(),
 	SvcContainer::#svc_container{}
 ) ->
 	{ok, accepted} | {ok, {rejected, Reason::any()}} | {error, Reason::any()}.
-reserve(TransactionPid, CustomerId, SvcContainer) ->
-	billy_client_transaction:reserve(TransactionPid, CustomerId, SvcContainer).
+reserve(TransactionId, CustomerId, SvcContainer) ->
+	billy_client_transaction:reserve(TransactionId, CustomerId, SvcContainer).
 
--spec commit(TransactionPid::pid()) ->
+-spec commit(TransactionId::billy_transaction_id()) ->
 	{ok, {commited, ok}} | {error, Reason::any()}.
-commit(TransactionPid) ->
-	billy_client_transaction:commit(TransactionPid).
+commit(TransactionId) ->
+	billy_client_transaction:commit(TransactionId).
 
--spec rollback(TransactionPid::pid()) ->
+-spec rollback(TransactionId::billy_transaction_id()) ->
 	{ok, {rolledback, ok}} | {error, Reason::any()}.
-rollback(TransactionPid) ->
-	billy_client_transaction:rollback(TransactionPid).
+rollback(TransactionId) ->
+	billy_client_transaction:rollback(TransactionId).

@@ -55,39 +55,43 @@
 -spec st_reserved(gen_fsm_event(), gen_fsm_from(), gen_fsm_state_data()) -> gen_fsm_handle_sync_event_result().
 
 -record(state, {
-	session_pid,
+	session_id,
 	transaction_id,
 	caller
 }).
 
--type billy_transaction_id() :: {SessionPid::pid(), TransactionId::integer()}.
+-type billy_transaction_id() :: {SessionId::binary(), TransactionId::integer()}.
 
 %% ===================================================================
 %% API
 %% ===================================================================
 
 -spec start_link(billy_transaction_id()) -> {ok, pid()}.
-start_link({SessionPid, TransactionId}) ->
-	gen_fsm:start_link(?MODULE, [{SessionPid, TransactionId}], []).
+start_link({SessionId, TransactionId}) ->
+	gen_fsm:start_link(?MODULE, [{SessionId, TransactionId}], []).
 
 %%
 %% Client calls
 %%
 
--spec start_transaction(billy_transaction_id()) -> {ok, TransactionPid::pid()}.
-start_transaction({SessionPid, TransactionId}) ->
-	billy_client_transaction_sup:start_transaction({SessionPid, TransactionId}).
+-spec start_transaction(billy_transaction_id()) -> {ok, TransactionPid::pid()} | {error, Reason::any()}.
+start_transaction({SessionId, TransactionId}) ->
+	{ok, TransactionPid} = billy_client_transaction_sup:start_transaction({SessionId, TransactionId}),
+	{ok, TransactionPid}.
 
--spec reserve(pid(), integer(), term()) -> term().
-reserve(TransactionPid, CustomerId, Container) ->
+-spec reserve(billy_transaction_id(), integer(), term()) -> term().
+reserve({SessionId, TransactionId}, CustomerId, Container) ->
+	{ok, TransactionPid} = get_transaction_pid({SessionId, TransactionId}),
 	gen_fsm:sync_send_event(TransactionPid, {reserve, CustomerId, Container}).
 
--spec commit(pid()) -> term().
-commit(TransactionPid) ->
+-spec commit(billy_transaction_id()) -> term().
+commit({SessionId, TransactionId}) ->
+	{ok, TransactionPid} = get_transaction_pid({SessionId, TransactionId}),
 	gen_fsm:sync_send_event(TransactionPid, commit).
 
--spec rollback(pid()) -> term().
-rollback(TransactionPid) ->
+-spec rollback(billy_transaction_id()) -> term().
+rollback({SessionId, TransactionId}) ->
+	{ok, TransactionPid} = get_transaction_pid({SessionId, TransactionId}),
 	gen_fsm:sync_send_event(TransactionPid, rollback).
 
 %%
@@ -95,28 +99,27 @@ rollback(TransactionPid) ->
 %%
 
 -spec reserved(billy_transaction_id(), term()) -> ok.
-reserved({SessionPid, TransactionId}, Result) ->
-	{ok, TransactionPid} = get_transaction_pid({SessionPid, TransactionId}),
+reserved({SessionId, TransactionId}, Result) ->
+	{ok, TransactionPid} = get_transaction_pid({SessionId, TransactionId}),
 	gen_fsm:send_event(TransactionPid, {reserved, Result}).
 
 -spec commited(billy_transaction_id(), term()) -> ok.
-commited({SessionPid, TransactionId}, Result) ->
-	{ok, TransactionPid} = get_transaction_pid({SessionPid, TransactionId}),
+commited({SessionId, TransactionId}, Result) ->
+	{ok, TransactionPid} = get_transaction_pid({SessionId, TransactionId}),
 	gen_fsm:send_event(TransactionPid, {commited, Result}).
 
 -spec rolledback(billy_transaction_id(), term()) -> ok.
-rolledback({SessionPid, TransactionId}, Result) ->
-	{ok, TransactionPid} = get_transaction_pid({SessionPid, TransactionId}),
+rolledback({SessionId, TransactionId}, Result) ->
+	{ok, TransactionPid} = get_transaction_pid({SessionId, TransactionId}),
 	gen_fsm:send_event(TransactionPid, {rolledback, Result}).
 
 %% ===================================================================
 %% gen_fsm callbacks
 %% ===================================================================
 
-init([{SessionPid, TransactionId}]) ->
-	?set_pname("billy_client_transaction"),
-	gproc:add_local_name({?MODULE, {SessionPid, TransactionId}}),
-	{ok, st_initial, #state{session_pid = SessionPid, transaction_id = TransactionId}, ?TRANSACTION_TIMEOUT}.
+init([{SessionId, TransactionId}]) ->
+	gproc:add_local_name({?MODULE, {SessionId, TransactionId}}),
+	{ok, st_initial, #state{session_id = SessionId, transaction_id = TransactionId}, ?TRANSACTION_TIMEOUT}.
 
 handle_event(Event, _StateName, State) ->
 	{stop, {bad_arg, Event}, State}.
@@ -145,10 +148,10 @@ st_initial(Event, State) ->
 	{stop, {bad_arg, Event}, State}.
 
 st_initial({reserve, CustomerId, Container}, From, State = #state{
-	session_pid = SessionPid,
+	session_id = SessionId,
 	transaction_id = TransactionId
 }) ->
-	billy_client_transaction_dispatcher:reserve(SessionPid, TransactionId, CustomerId, Container),
+	billy_client_transaction_dispatcher:reserve({SessionId, TransactionId}, CustomerId, Container),
 	{next_state, st_reserving, State#state{caller = From}, ?TRANSACTION_TIMEOUT};
 
 st_initial(Event, _From, State) ->
@@ -184,17 +187,17 @@ st_reserved(Event, State) ->
 	{stop, {bad_arg, Event}, State}.
 
 st_reserved(commit, From, State = #state{
-	session_pid = SessionPid,
+	session_id = SessionId,
 	transaction_id = TransactionId
 }) ->
-	billy_client_transaction_dispatcher:commit(SessionPid, TransactionId),
+	billy_client_transaction_dispatcher:commit({SessionId, TransactionId}),
 	{next_state, st_commiting, State#state{caller = From}, ?TRANSACTION_TIMEOUT};
 
 st_reserved(rollback, From, State = #state{
-	session_pid = SessionPid,
+	session_id = SessionId,
 	transaction_id = TransactionId
 }) ->
-	billy_client_transaction_dispatcher:rollback(SessionPid, TransactionId),
+	billy_client_transaction_dispatcher:rollback({SessionId, TransactionId}),
 	{next_state, st_rollingback, State#state{caller = From}, ?TRANSACTION_TIMEOUT};
 
 st_reserved(Event, _From, State) ->
@@ -241,8 +244,8 @@ st_rollingback(Event, _From, State) ->
 %% ===================================================================
 
 -spec get_transaction_pid(billy_transaction_id()) -> {ok, pid()} | {error, no_transaction}.
-get_transaction_pid({SessionPid, TransactionId}) ->
-	case gproc:lookup_pids({n, l, {?MODULE, {SessionPid, TransactionId}}}) of
+get_transaction_pid({SessionId, TransactionId}) ->
+	case gproc:lookup_pids({n, l, {?MODULE, {SessionId, TransactionId}}}) of
 		[TransactionPid] ->
 			{ok, TransactionPid};
 		[] ->
