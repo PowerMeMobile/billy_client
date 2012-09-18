@@ -204,9 +204,9 @@ handle_data_pdu(ResponseData = #billy_session_data_pdu{}, _FSM, State = #state{
 
 -spec get_session_pid(binary()) -> {ok, pid()} | {error, no_session}.
 get_session_pid(SessionId) ->
-	case gproc:lookup_pids({n, l, {?MODULE, SessionId}}) of
-		[SessionPid] ->
-			{ok, SessionPid};
-		[] ->
-			{error, no_session}
+	case gproc:lookup_local_name({?MODULE, SessionId}) of
+		undefined ->
+			{error, no_session};
+		SessionPid ->
+			{ok, SessionPid}
 	end.

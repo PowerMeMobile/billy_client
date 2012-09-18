@@ -245,9 +245,9 @@ st_rollingback(Event, _From, State) ->
 
 -spec get_transaction_pid(billy_transaction_id()) -> {ok, pid()} | {error, no_transaction}.
 get_transaction_pid({SessionId, TransactionId}) ->
-	case gproc:lookup_pids({n, l, {?MODULE, {SessionId, TransactionId}}}) of
-		[TransactionPid] ->
-			{ok, TransactionPid};
-		[] ->
-			{error, no_transaction}
+	case gproc:lookup_local_name({?MODULE, {SessionId, TransactionId}}) of
+		undefined ->
+			{error, no_transaction};
+		TransactionPid ->
+			{ok, TransactionPid}
 	end.
