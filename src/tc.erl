@@ -8,15 +8,11 @@
 t() ->
 	{ok, SessionId} = billy_client:start_session("127.0.0.1", 16062, <<"client1">>, <<"secureme!">>),
 
-	{ok, TransId1} = billy_client:start_transaction(SessionId),
-	{ok, Container} = new_container(<<"sms_on">>, 10),
-	{ok, accepted} = billy_client:reserve(TransId1, 1, Container),
-	{ok, {commited, ok}} = billy_client:commit(TransId1),
+	{accepted, TransId1} = billy_client:reserve(SessionId, 1, <<"sms_on">>, 10),
+	commited = billy_client:commit(TransId1),
 
-	{ok, TransId2} = billy_client:start_transaction(SessionId),
-	{ok, Container} = new_container(<<"sms_on">>, 10),
-	{ok, accepted} = billy_client:reserve(TransId2, 1, Container),
-	{ok, {rolledback, ok}} = billy_client:rollback(TransId2),
+	{accepted, TransId2} = billy_client:reserve(SessionId, 1, <<"sms_on">>, 10),
+	rolledback = billy_client:rollback(TransId2),
 
 	ok = billy_client:stop_session(SessionId).
 
@@ -30,28 +26,24 @@ start_transaction(SessionId) ->
 	{ok, TransId} = billy_client:start_transaction(SessionId),
 	{ok, TransId}.
 
-test_commit(TransId, CID) ->
-	{ok, Container} = new_container(<<"sms_on">>, 10),
-	case billy_client:reserve(TransId, CID, Container) of
-		{ok, accepted} ->
+test_commit(SessionId, CID) ->
+	case billy_client:reserve(SessionId, CID, <<"sms_on">>, 10) of
+		{accepted, TransId} ->
 			?log_debug("Reserving accepted... ~p", [TransId]),
-			{ok, {commited, ok}} = billy_client:commit(TransId),
+			commited = billy_client:commit(TransId),
 			?log_debug("Commit completed... ", []);
-			% {ok, {rolledback, ok}} = billy_client:rollback(TransId),
-			% ?log_debug("Rollingback completed: ~p", [now()]);
-		{ok, {rejected, Reason}} ->
+		{rejected, Reason} ->
 			?log_debug("Rejected! Reason: ~p", [Reason]);
 		Any ->
 			?log_debug("[transaction] Error. Reserve request returned: ~p", [Any])
 	end.
 
-test_rollback(TransId, CID) ->
-	{ok, Container} = new_container(<<"sms_on">>, 10),
-	case billy_client:reserve(TransId, CID, Container) of
-		{ok, accepted} ->
-			{ok, {rolledback, ok}} = billy_client:rollback(TransId),
+test_rollback(SessionId, CID) ->
+	case billy_client:reserve(SessionId, CID, <<"sms_on">>, 10) of
+		{accepted, TransId} ->
+			rolledback = billy_client:rollback(TransId),
 			?log_debug("Rollingback complited: ~p", [now()]);
-		{ok, {rejected, Reason}} ->
+		{rejected, Reason} ->
 			?log_debug("Rejected! Reason: ~p", [Reason]);
 		Any ->
 			?log_debug("[transaction] Error. Reserve request returned: ~p", [Any])
@@ -109,34 +101,27 @@ gen_task(Task, CIDCnt, RandomFun, Set) ->
 start_thread(Task, SessionId, CounterSrv) ->
 	lists:foreach(
 		fun(CID)->
-			start_transaction(CID, SessionId, CounterSrv),
+			start_transaction(SessionId, CID, CounterSrv),
 			?log_debug(".", [])
 		end,
 		Task).
 
-start_transaction(CID, SessionId, CounterSrv) ->
-	{ok, TransId} = billy_client:start_transaction(SessionId),
-	{ok, Container} = new_container(<<"sms_on">>, 10),
-	case billy_client:reserve(TransId, CID, Container) of
-		{ok, accepted} ->
+start_transaction(SessionId, CID, CounterSrv) ->
+	case billy_client:reserve(SessionId, CID, <<"sms_on">>, 10) of
+		{accepted, TransId} ->
 			?log_debug("Reserving accepted... ~p", [TransId]),
-			% {ok, {commited, ok}} = billy_client:commit(TransId),
+			% commited = billy_client:commit(TransId),
 			% ?log_debug("Commit complited... ", []);
-			{ok, {rolledback, ok}} = billy_client:rollback(TransId),
+			rolledback = billy_client:rollback(TransId),
 			?log_debug("Rollingback completed: ~p", [now()]),
 			CounterSrv ! {report, rolledback};
-		{ok, {rejected, Reason}} ->
+		{rejected, Reason} ->
 			?log_debug("Rejected! Reason: ~p", [Reason]),
 			CounterSrv ! {report, rejected};
 		Any ->
 			?log_debug("[transaction] Error. Reserve request returned: ~p", [Any]),
 			CounterSrv ! {report, {error, Any}}
 	end.
-
-new_container(Type, Count) ->
-	{ok, EmptyContainer} = billy_service:cont_create(),
-	{ok, FullContainer} = billy_service:cont_set_id(EmptyContainer, Type, #svc_details{quantity = Count}),
-	{ok, FullContainer}.
 
 start_counter(StartTime, TranQuantity) ->
 	counter(StartTime, TranQuantity, 0, {0, 0, 0, 0}).
