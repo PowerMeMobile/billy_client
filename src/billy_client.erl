@@ -14,6 +14,7 @@
 -type billy_session_id() :: binary().
 -type billy_transaction_id() :: {SessionId::billy_session_id(), TransactionId::integer()}.
 
+% TODO: move these defines to billy_client.hrl
 -define(SERVICE_TYPE_SMS_ON, <<"sms_on">>).
 -define(SERVICE_TYPE_SMS_OFF, <<"sms_off">>).
 -define(SERVICE_TYPE_SMS_INTERNATIONAL, <<"sms_international">>).
@@ -58,6 +59,7 @@ reserve(SessionId, CustomerId, ServiceType, ServiceCount) when ServiceCount > 0 
 				{ok, accepted} ->
 					{accepted, TransactionId};
 				{ok, {rejected, Reason}} ->
+					% TODO: should the transaction be stopped here? have it stopped already?
 					{rejected, Reason};
 				{error, Reason} ->
 					{error, Reason}
@@ -70,6 +72,7 @@ reserve(SessionId, CustomerId, ServiceType, ServiceCount) when ServiceCount > 0 
 	commited | {error, Reason::any()}.
 commit(TransactionId) ->
 	case billy_client_transaction:commit(TransactionId) of
+		% TODO: any other results but ok?
 		{ok, {commited, ok}} ->
 			commited;
 		{error, Reason} ->
@@ -80,6 +83,7 @@ commit(TransactionId) ->
 	rolledback | {error, Reason::any()}.
 rollback(TransactionId) ->
 	case billy_client_transaction:rollback(TransactionId) of
+		% TODO: any other results but ok?
 		{ok, {rolledback, ok}} ->
 			rolledback;
 		{error, Reason} ->
