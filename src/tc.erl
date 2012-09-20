@@ -16,6 +16,29 @@ t() ->
 
 	ok = billy_client:stop_session(SessionId).
 
+test() ->
+	{ok, SessionId} = billy_client:start_session("127.0.0.1", 16062, <<"client1">>, <<"secureme!">>),
+
+	{accepted, TransId1} = billy_client:reserve(SessionId, 1, <<"sms_on">>, 9),
+	commited = billy_client:commit(TransId1),
+
+	{accepted, TransId2} = billy_client:reserve(SessionId, 1, <<"sms_off">>, 1),
+	commited = billy_client:commit(TransId2),
+
+	{accepted, TransId3} = billy_client:reserve(SessionId, 1, <<"sms_international">>, 3),
+	commited = billy_client:commit(TransId3),
+
+	{accepted, TransId4} = billy_client:reserve(SessionId, 1, <<"sms_international">>, 1),
+	commited = billy_client:commit(TransId4),
+
+	{accepted, TransId5} = billy_client:reserve(SessionId, 1, <<"sms_on">>, 2),
+	commited = billy_client:commit(TransId5),
+
+	{accepted, TransId6} = billy_client:reserve(SessionId, 1, <<"sms_off">>, 2),
+	commited = billy_client:commit(TransId6),
+
+	ok = billy_client:stop_session(SessionId).
+
 start_session() ->
 	billy_client:start_session("127.0.0.1", 16062, <<"client1">>, <<"secureme!">>).
 
