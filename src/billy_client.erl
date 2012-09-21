@@ -59,8 +59,8 @@ reserve(SessionId, CustomerId, ServiceType, ServiceCount) when ServiceCount > 0 
 				{ok, accepted} ->
 					{accepted, TransactionId};
 				{ok, {rejected, Reason}} ->
-					% TODO: should the transaction be stopped here? have it stopped already?
-					{rejected, Reason};
+					% TODO: should not the transaction be stopped here? have it stopped already?
+					{rejected, list_to_atom(binary_to_list(Reason))};
 				{error, Reason} ->
 					{error, Reason}
 			end;
