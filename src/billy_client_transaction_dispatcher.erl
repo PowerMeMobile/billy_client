@@ -73,7 +73,6 @@ dispatch_response(SessionId, {_, BinData}) ->
 %% ===================================================================
 
 init([]) ->
-	?log_debug("init", []),
 	{ok, #state{}}.
 
 handle_call(Request, _From, State = #state{}) ->
