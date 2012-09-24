@@ -6,48 +6,93 @@
 -include_lib("billy_common/include/service.hrl").
 
 t() ->
+	CustomerId = 1,
 	{ok, SessionId} = billy_client:start_session("127.0.0.1", 16062, <<"client1">>, <<"secureme!">>),
 
-	{accepted, TransId1} = billy_client:reserve(SessionId, 1, <<"sms_on">>, 10),
-	commited = billy_client:commit(TransId1),
-
-	{accepted, TransId2} = billy_client:reserve(SessionId, 1, <<"sms_on">>, 10),
-	rolledback = billy_client:rollback(TransId2),
+	case billy_client:reserve(SessionId, CustomerId, <<"sms_on">>, 10) of
+		{accepted, TransId} ->
+			?log_debug("Reserving accepted... ~p", [TransId]),
+			commited = billy_client:commit(TransId),
+			?log_debug("Commit completed... ", []);
+		{rejected, Reason} ->
+			?log_debug("Rejected! Reason: ~p", [Reason]);
+		Any ->
+			?log_debug("[transaction] Error. Reserve request returned: ~p", [Any])
+	end,
 
 	ok = billy_client:stop_session(SessionId).
 
 test() ->
+	Start = erlang:now(),
+
 	{ok, SessionId} = billy_client:start_session("127.0.0.1", 16062, <<"client1">>, <<"secureme!">>),
 
-	{accepted, TransId1} = billy_client:reserve(SessionId, 1, <<"sms_on">>, 9),
-	commited = billy_client:commit(TransId1),
+	CustomerId = 1,
+	MaxAmount = 10,
+	RejectsToFinish = 5,
+	Clients = [
+		spawn_link(?MODULE, start_client, [SessionId, CustomerId, self(), MaxAmount, RejectsToFinish]),
+		spawn_link(?MODULE, start_client, [SessionId, CustomerId, self(), MaxAmount, RejectsToFinish]),
+		spawn_link(?MODULE, start_client, [SessionId, CustomerId, self(), MaxAmount, RejectsToFinish]),
+		spawn_link(?MODULE, start_client, [SessionId, CustomerId, self(), MaxAmount, RejectsToFinish]),
+		spawn_link(?MODULE, start_client, [SessionId, CustomerId, self(), MaxAmount, RejectsToFinish]),
+		spawn_link(?MODULE, start_client, [SessionId, CustomerId, self(), MaxAmount, RejectsToFinish]),
+		spawn_link(?MODULE, start_client, [SessionId, CustomerId, self(), MaxAmount, RejectsToFinish]),
+		spawn_link(?MODULE, start_client, [SessionId, CustomerId, self(), MaxAmount, RejectsToFinish]),
+		spawn_link(?MODULE, start_client, [SessionId, CustomerId, self(), MaxAmount, RejectsToFinish]),
+		spawn_link(?MODULE, start_client, [SessionId, CustomerId, self(), MaxAmount, RejectsToFinish])
+	],
 
-	{accepted, TransId2} = billy_client:reserve(SessionId, 1, <<"sms_off">>, 1),
-	commited = billy_client:commit(TransId2),
+	{ok, Dict} = join_all(length(Clients), dict:new()),
 
-	{accepted, TransId3} = billy_client:reserve(SessionId, 1, <<"sms_international">>, 3),
-	commited = billy_client:commit(TransId3),
+	ok = billy_client:stop_session(SessionId),
 
-	{accepted, TransId4} = billy_client:reserve(SessionId, 1, <<"sms_international">>, 1),
-	commited = billy_client:commit(TransId4),
+	Stop = erlang:now(),
+	Diff = timer:now_diff(Stop, Start) / 1000000,
+	timer:sleep(1000),
 
-	{accepted, TransId5} = billy_client:reserve(SessionId, 1, <<"sms_on">>, 2),
-	commited = billy_client:commit(TransId5),
+	print_stats(Dict, Diff).
 
-	{accepted, TransId6} = billy_client:reserve(SessionId, 1, <<"sms_off">>, 2),
-	commited = billy_client:commit(TransId6),
+start_client(_SessionId, _CustomerId, CollectorPid, _MaxAmount, 0) ->
+	CollectorPid ! {done};
+start_client(SessionId, CustomerId, CollectorPid, MaxAmount, RejectsToFinish) ->
+	Amount = random:uniform(MaxAmount),
+	case billy_client:reserve(SessionId, CustomerId, <<"sms_on">>, Amount) of
+		{accepted, TransId} ->
+			timer:sleep(200),
+			commited = billy_client:commit(TransId),
+			CollectorPid ! {consumed, {<<"sms_on">>, Amount}},
+			start_client(SessionId, CustomerId, CollectorPid, MaxAmount, RejectsToFinish);
+		{rejected, _Reason} ->
+			start_client(SessionId, CustomerId, CollectorPid, MaxAmount, RejectsToFinish-1)
+	end.
 
-	ok = billy_client:stop_session(SessionId).
+join_all(0, Dict) ->
+	{ok, Dict};
+join_all(HowMany, Dict) ->
+	receive
+		{consumed, {Service, Amount}} ->
+			NewDict = dict:update_counter(Service, Amount, Dict),
+			join_all(HowMany, NewDict);
+		{done} ->
+			join_all(HowMany-1, Dict)
+	end.
+
+print_stats(Dict, Time) ->
+	List = dict:to_list(Dict),
+	io:format("Services consumed:~n", []),
+	lists:foreach(
+		fun({Service, Amount}) ->
+			io:format("~p: ~p~n", [Service, Amount])
+		end,
+		List),
+	io:format("Time used: ~p secs~n", [Time]).
 
 start_session() ->
 	billy_client:start_session("127.0.0.1", 16062, <<"client1">>, <<"secureme!">>).
 
 stop_session(SessionId) ->
 	billy_client:stop_session(SessionId).
-
-start_transaction(SessionId) ->
-	{ok, TransId} = billy_client:start_transaction(SessionId),
-	{ok, TransId}.
 
 test_commit(SessionId, CID) ->
 	case billy_client:reserve(SessionId, CID, <<"sms_on">>, 10) of
