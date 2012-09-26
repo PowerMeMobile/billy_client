@@ -5,11 +5,18 @@
 -include_lib("billy_common/include/logging.hrl").
 -include_lib("billy_common/include/service.hrl").
 
-t() ->
-	CustomerId = 1,
-	{ok, SessionId} = billy_client:start_session("127.0.0.1", 16062, <<"client1">>, <<"secureme!">>),
+start_session() ->
+	billy_client:start_session("127.0.0.1", 16062, <<"test_type">>, <<"client1">>, <<"secureme!">>).
 
-	case billy_client:reserve(SessionId, CustomerId, <<"sms_on">>, 10) of
+stop_session(SessionId) ->
+	billy_client:stop_session(SessionId).
+
+t() ->
+	CustomerId = <<"1">>,
+	UserId = <<"1">>,
+	{ok, SessionId} = start_session(),
+
+	case billy_client:reserve(SessionId, CustomerId, UserId, <<"sms_on">>, 10) of
 		{accepted, TransId} ->
 			?log_debug("Reserving accepted... ~p", [TransId]),
 			commited = billy_client:commit(TransId),
@@ -20,15 +27,15 @@ t() ->
 			?log_debug("[transaction] Error. Reserve request returned: ~p", [Any])
 	end,
 
-	ok = billy_client:stop_session(SessionId).
+	ok = stop_session(SessionId).
 
 test() ->
 	Start = erlang:now(),
 
-	{ok, SessionId} = billy_client:start_session("127.0.0.1", 16062, <<"client1">>, <<"secureme!">>),
+	{ok, SessionId} = start_session(),
 
 	CustomerId = 1,
-	MaxAmount = 10,
+	MaxAmount = 1,
 	RejectsToFinish = 5,
 	Clients = [
 		spawn_link(?MODULE, start_client, [SessionId, CustomerId, self(), MaxAmount, RejectsToFinish]),
@@ -45,7 +52,7 @@ test() ->
 
 	{ok, Dict} = join_all(length(Clients), dict:new()),
 
-	ok = billy_client:stop_session(SessionId),
+	ok = stop_session(SessionId),
 
 	Stop = erlang:now(),
 	Diff = timer:now_diff(Stop, Start) / 1000000,
@@ -88,12 +95,6 @@ print_stats(Dict, Time) ->
 		List),
 	io:format("Time used: ~p secs~n", [Time]).
 
-start_session() ->
-	billy_client:start_session("127.0.0.1", 16062, <<"client1">>, <<"secureme!">>).
-
-stop_session(SessionId) ->
-	billy_client:stop_session(SessionId).
-
 test_commit(SessionId, CID) ->
 	case billy_client:reserve(SessionId, CID, <<"sms_on">>, 10) of
 		{accepted, TransId} ->
@@ -121,7 +122,7 @@ start(StartSeqNum, EndSeqNum, TranQuantity, ThreadsQuantity) ->
 	?log_debug("[tc] Generating tasks...", []),
 	{ok, TaskList} = generate_cids(StartSeqNum, EndSeqNum, TranQuantity, ThreadsQuantity),
 	?log_debug("[tc] TaskList generated...~p", [TaskList]),
-	{ok, SessionId} = billy_client:start_session("127.0.0.1", 16062, <<"client1">>, <<"secureme!">>),
+	{ok, SessionId} = start_session(),
 	StartTime = now(),
 	CounterSrv = spawn_link(?MODULE, start_counter, [StartTime, TranQuantity]),
 	lists:foreach(

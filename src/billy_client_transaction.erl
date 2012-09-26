@@ -8,7 +8,7 @@
 
 	% client calls
 	start_transaction/1,
-	reserve/3,
+	reserve/4,
 	commit/1,
 	rollback/1,
 
@@ -79,10 +79,10 @@ start_transaction({SessionId, TransactionId}) ->
 	{ok, TransactionPid} = billy_client_transaction_sup:start_transaction({SessionId, TransactionId}),
 	{ok, TransactionPid}.
 
--spec reserve(billy_transaction_id(), integer(), term()) -> term().
-reserve({SessionId, TransactionId}, CustomerId, Container) ->
+-spec reserve(billy_transaction_id(), binary(), binary(), term()) -> term().
+reserve({SessionId, TransactionId}, CustomerId, UserId, Container) ->
 	{ok, TransactionPid} = get_transaction_pid({SessionId, TransactionId}),
-	gen_fsm:sync_send_event(TransactionPid, {reserve, CustomerId, Container}).
+	gen_fsm:sync_send_event(TransactionPid, {reserve, CustomerId, UserId, Container}).
 
 -spec commit(billy_transaction_id()) -> term().
 commit({SessionId, TransactionId}) ->
@@ -147,11 +147,11 @@ st_initial(timeout, State = #state{}) ->
 st_initial(Event, State) ->
 	{stop, {bad_arg, Event}, State}.
 
-st_initial({reserve, CustomerId, Container}, From, State = #state{
+st_initial({reserve, CustomerId, UserId, Container}, From, State = #state{
 	session_id = SessionId,
 	transaction_id = TransactionId
 }) ->
-	billy_client_transaction_dispatcher:reserve({SessionId, TransactionId}, CustomerId, Container),
+	billy_client_transaction_dispatcher:reserve({SessionId, TransactionId}, CustomerId, UserId, Container),
 	{next_state, st_reserving, State#state{caller = From}, ?TRANSACTION_TIMEOUT};
 
 st_initial(Event, _From, State) ->
