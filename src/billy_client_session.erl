@@ -67,7 +67,7 @@ start_session(Host, Port, ClientId, ClientPw) ->
 			case gen_server:call(SessionPid, wait_for_bind_result, 10000) of
 				{ok, {accepted, SessionId}} ->
 					{ok, SessionId};
-				{ok, rejected} ->
+				{ok, {rejected, <<"invalid_credentials">>}} ->
 					et:trace_me(85, client, server, disconnect, []),
 					%% stop the session.
 					gen_server:cast(SessionPid, disconnect),
@@ -172,11 +172,11 @@ handle_bind_accept(#billy_session_bind_response{}, _FSM, State = #state{
 	gen_server:reply(ReplyTo, {ok, {accepted, SessionId}}),
 	{noreply, State}.
 
-handle_bind_reject(#billy_session_bind_response{}, FSM, State = #state{
+handle_bind_reject(#billy_session_bind_response{result = {reject, Reason}}, FSM, State = #state{
 	bind_result_callback = ReplyTo
 }) ->
-	?log_debug("bind response rejected", []),
-	gen_server:reply(ReplyTo, {ok, rejected}),
+	?log_debug("bind response rejected with: ~p", [Reason]),
+	gen_server:reply(ReplyTo, {ok, {rejected, Reason}}),
 	{noreply, State#state{bind_result_callback = undefined}}.
 
 handle_require_unbind(#billy_session_require_unbind{}, _FSM, State) ->
