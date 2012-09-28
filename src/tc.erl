@@ -13,7 +13,8 @@ stop_session(SessionId) ->
 
 t() ->
 	CustomerId = <<"1">>,
-	UserId = <<"1">>,
+	UserId = <<"11">>,
+
 	{ok, SessionId} = start_session(),
 
 	case billy_client:reserve(SessionId, CustomerId, UserId, <<"sms_on">>, 10) of
@@ -34,20 +35,22 @@ test() ->
 
 	{ok, SessionId} = start_session(),
 
-	CustomerId = 1,
+	CustomerId = <<"1">>,
+	UserId = <<"11">>,
+
 	MaxAmount = 1,
 	RejectsToFinish = 5,
 	Clients = [
-		spawn_link(?MODULE, start_client, [SessionId, CustomerId, self(), MaxAmount, RejectsToFinish]),
-		spawn_link(?MODULE, start_client, [SessionId, CustomerId, self(), MaxAmount, RejectsToFinish]),
-		spawn_link(?MODULE, start_client, [SessionId, CustomerId, self(), MaxAmount, RejectsToFinish]),
-		spawn_link(?MODULE, start_client, [SessionId, CustomerId, self(), MaxAmount, RejectsToFinish]),
-		spawn_link(?MODULE, start_client, [SessionId, CustomerId, self(), MaxAmount, RejectsToFinish]),
-		spawn_link(?MODULE, start_client, [SessionId, CustomerId, self(), MaxAmount, RejectsToFinish]),
-		spawn_link(?MODULE, start_client, [SessionId, CustomerId, self(), MaxAmount, RejectsToFinish]),
-		spawn_link(?MODULE, start_client, [SessionId, CustomerId, self(), MaxAmount, RejectsToFinish]),
-		spawn_link(?MODULE, start_client, [SessionId, CustomerId, self(), MaxAmount, RejectsToFinish]),
-		spawn_link(?MODULE, start_client, [SessionId, CustomerId, self(), MaxAmount, RejectsToFinish])
+		spawn_link(?MODULE, start_client, [SessionId, CustomerId, UserId, self(), MaxAmount, RejectsToFinish]),
+		spawn_link(?MODULE, start_client, [SessionId, CustomerId, UserId, self(), MaxAmount, RejectsToFinish]),
+		spawn_link(?MODULE, start_client, [SessionId, CustomerId, UserId, self(), MaxAmount, RejectsToFinish]),
+		spawn_link(?MODULE, start_client, [SessionId, CustomerId, UserId, self(), MaxAmount, RejectsToFinish]),
+		spawn_link(?MODULE, start_client, [SessionId, CustomerId, UserId, self(), MaxAmount, RejectsToFinish]),
+		spawn_link(?MODULE, start_client, [SessionId, CustomerId, UserId, self(), MaxAmount, RejectsToFinish]),
+		spawn_link(?MODULE, start_client, [SessionId, CustomerId, UserId, self(), MaxAmount, RejectsToFinish]),
+		spawn_link(?MODULE, start_client, [SessionId, CustomerId, UserId, self(), MaxAmount, RejectsToFinish]),
+		spawn_link(?MODULE, start_client, [SessionId, CustomerId, UserId, self(), MaxAmount, RejectsToFinish]),
+		spawn_link(?MODULE, start_client, [SessionId, CustomerId, UserId, self(), MaxAmount, RejectsToFinish])
 	],
 
 	{ok, Dict} = join_all(length(Clients), dict:new()),
@@ -60,18 +63,18 @@ test() ->
 
 	print_stats(Dict, Diff).
 
-start_client(_SessionId, _CustomerId, CollectorPid, _MaxAmount, 0) ->
+start_client(_SessionId, _CustomerId, _UserId, CollectorPid, _MaxAmount, 0) ->
 	CollectorPid ! {done};
-start_client(SessionId, CustomerId, CollectorPid, MaxAmount, RejectsToFinish) ->
+start_client(SessionId, CustomerId, UserId, CollectorPid, MaxAmount, RejectsToFinish) ->
 	Amount = random:uniform(MaxAmount),
-	case billy_client:reserve(SessionId, CustomerId, <<"sms_on">>, Amount) of
+	case billy_client:reserve(SessionId, CustomerId, UserId, <<"sms_on">>, Amount) of
 		{accepted, TransId} ->
 			timer:sleep(200),
 			commited = billy_client:commit(TransId),
 			CollectorPid ! {consumed, {<<"sms_on">>, Amount}},
-			start_client(SessionId, CustomerId, CollectorPid, MaxAmount, RejectsToFinish);
+			start_client(SessionId, CustomerId, UserId, CollectorPid, MaxAmount, RejectsToFinish);
 		{rejected, _Reason} ->
-			start_client(SessionId, CustomerId, CollectorPid, MaxAmount, RejectsToFinish-1)
+			start_client(SessionId, CustomerId, UserId, CollectorPid, MaxAmount, RejectsToFinish-1)
 	end.
 
 join_all(0, Dict) ->
