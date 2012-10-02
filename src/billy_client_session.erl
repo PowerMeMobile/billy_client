@@ -18,6 +18,7 @@
 	init/1,
 	handle_call/4,
 	handle_cast/3,
+	terminate/3,
 
 	handle_hello/3,
 	handle_bind_accept/3,
@@ -210,6 +211,10 @@ handle_data_pdu(ResponseData = #billy_session_data_pdu{}, _FSM, State = #state{
 }) ->
 	billy_client_transaction_dispatcher:dispatch_response(SessionId, ResponseData),
 	{noreply, State}.
+
+terminate(Reason, _FSM, State = #state{}) ->
+	?log_debug("~p", [Reason]),
+	ok.
 
 %% ===================================================================
 %% Internal
