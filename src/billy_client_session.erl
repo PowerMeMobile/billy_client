@@ -4,9 +4,9 @@
 
 %% API
 -export([
-	start_link/4,
+	start_link/3,
 
-	start_session/5,
+	start_session/4,
 	stop_session/1,
 
 	start_transaction/1,
@@ -33,7 +33,6 @@
 -include_lib("billy_common/include/billy_session_piqi.hrl").
 
 -record(state, {
-	client_type,
 	client_id,
 	client_pw,
 	session_id,
@@ -48,28 +47,26 @@
 
 -spec start_link(
 	Socket::gen_tcp:socket(),
-	ClientType::binary(),
 	ClientId::binary(),
 	ClientPw::binary()
 ) ->
 	{ok, pid()} | {error, Reason::any()}.
-start_link(Socket, ClientType, ClientId, ClientPw) ->
-	gen_billy_session_c:start_link(Socket, ?MODULE, [ClientType, ClientId, ClientPw]).
+start_link(Socket, ClientId, ClientPw) ->
+	gen_billy_session_c:start_link(Socket, ?MODULE, [ClientId, ClientPw]).
 
 -spec start_session(
 	Host::string(),
 	Port::integer(),
-	ClientType::binary(),
 	ClientId::binary(),
 	ClientPw::binary()
 ) ->
 	{ok, SessionId::binary()} | {error, Reason::any()}.
-start_session(Host, Port, ClientType, ClientId, ClientPw) ->
+start_session(Host, Port, ClientId, ClientPw) ->
 	et:trace_me(85, client, server, connect, []),
 	case gen_tcp:connect(Host, Port, [binary, {active, false}]) of
 		{ok, Socket} ->
 			%% start new session and pass socket to it.
-			{ok, SessionPid} = billy_client_session_sup:start_session(Socket, ClientType, ClientId, ClientPw),
+			{ok, SessionPid} = billy_client_session_sup:start_session(Socket, ClientId, ClientPw),
 			{ok, FSM} = gen_server:call(SessionPid, get_fsm),
 			ok = gen_tcp:controlling_process(Socket, FSM),
 			inet:setopts(Socket, [{active, once}]),
@@ -114,9 +111,8 @@ send(SessionId, ResponseBin) ->
 %% gen_billy_session_c callbacks
 %% ===================================================================
 
-init([ClientType, ClientId, ClientPw]) ->
+init([ClientId, ClientPw]) ->
 	{ok, #state{
-		client_type = ClientType,
 		client_id = ClientId,
 		client_pw = ClientPw,
 		last_trans_id = 0
@@ -161,7 +157,6 @@ handle_hello(#billy_session_hello{
 	session_id = SessionId,
 	bind_request_timeout = Timeout
 }, FSM, State = #state{
-	client_type = ClientType,
 	client_id = ClientId,
 	client_pw = ClientPw
 }) ->
@@ -171,7 +166,6 @@ handle_hello(#billy_session_hello{
 	?log_debug("timeout: ~p", [Timeout]),
 	gproc:add_local_name({?MODULE, SessionId}),
 	gen_billy_session_c:reply_bind(FSM, [
-		{client_type, ClientType},
 		{client_id, ClientId},
 		{client_pw, ClientPw}
 	]),

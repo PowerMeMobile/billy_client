@@ -1,10 +1,10 @@
 -module(billy_client).
 
 -export([
-	start_session/5,
+	start_session/4,
 	stop_session/1,
 
-	reserve/5,
+	reserve/6,
 	commit/1,
 	rollback/1
 ]).
@@ -29,13 +29,12 @@
 -spec start_session(
 	Host::string(),
 	Port::integer(),
-	ClientType::binary(),
 	ClientId::binary(),
 	ClientPw::binary()
 ) ->
 	{ok, SessionId::billy_session_id()} | {error, Reason::any()}.
-start_session(Host, Port, ClientType, ClientId, ClientPw) ->
-	billy_client_session:start_session(Host, Port, ClientType, ClientId, ClientPw).
+start_session(Host, Port, ClientId, ClientPw) ->
+	billy_client_session:start_session(Host, Port, ClientId, ClientPw).
 
 -spec stop_session(SessionId::billy_session_id()) -> ok | {error, Reason::any()}.
 stop_session(SessionId) ->
@@ -43,6 +42,7 @@ stop_session(SessionId) ->
 
 -spec reserve(
 	SessionId::billy_session_id(),
+	ClientType::binary(),
 	CustomerId::binary(),
 	UserId::binary(),
 	ServiceType::binary(),
@@ -51,7 +51,7 @@ stop_session(SessionId) ->
 	{accepted, TransactionId::billy_transaction_id()}
   | {rejected, Reason::any()}
   | {error, Reason::any()}.
-reserve(SessionId, CustomerId, UserId, ServiceType, ServiceQuantity) when ServiceQuantity > 0 ->
+reserve(SessionId, ClientType, CustomerId, UserId, ServiceType, ServiceQuantity) when ServiceQuantity > 0 ->
 	case billy_client_session:start_transaction(SessionId) of
 		{ok, TransactionId} ->
 			{ok, EmptySvcContainer} = billy_service:cont_create(),
@@ -60,7 +60,7 @@ reserve(SessionId, CustomerId, UserId, ServiceType, ServiceQuantity) when Servic
 				ServiceType,
 				#svc_details{quantity = ServiceQuantity}
 			),
-			case billy_client_transaction:reserve(TransactionId, CustomerId, UserId, FullSvcContainer) of
+			case billy_client_transaction:reserve(TransactionId, ClientType, CustomerId, UserId, FullSvcContainer) of
 				{ok, accepted} ->
 					{accepted, TransactionId};
 				{ok, {rejected, Reason}} ->

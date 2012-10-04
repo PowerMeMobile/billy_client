@@ -6,22 +6,43 @@
 -include_lib("billy_common/include/service.hrl").
 
 start_session() ->
-	billy_client:start_session("127.0.0.1", 16062, <<"test_type">>, <<"client1">>, <<"secureme!">>).
+	billy_client:start_session("127.0.0.1", 16062, <<"client1">>, <<"secureme!">>).
 
 stop_session(SessionId) ->
 	billy_client:stop_session(SessionId).
 
-t() ->
+c() ->
+	ClientType = <<"test_type">>,
 	CustomerId = <<"1">>,
 	UserId = <<"11">>,
 
 	{ok, SessionId} = start_session(),
 
-	case billy_client:reserve(SessionId, CustomerId, UserId, <<"sms_on">>, 10) of
+	case billy_client:reserve(SessionId, ClientType, CustomerId, UserId, <<"sms_on">>, 10) of
 		{accepted, TransId} ->
 			?log_debug("Reserving accepted... ~p", [TransId]),
 			commited = billy_client:commit(TransId),
 			?log_debug("Commit completed... ", []);
+		{rejected, Reason} ->
+			?log_debug("Rejected! Reason: ~p", [Reason]);
+		Any ->
+			?log_debug("[transaction] Error. Reserve request returned: ~p", [Any])
+	end,
+
+	ok = stop_session(SessionId).
+
+r() ->
+	ClientType = <<"test_type">>,
+	CustomerId = <<"1">>,
+	UserId = <<"11">>,
+
+	{ok, SessionId} = start_session(),
+
+	case billy_client:reserve(SessionId, ClientType, CustomerId, UserId, <<"sms_on">>, 10) of
+		{accepted, TransId} ->
+			?log_debug("Reserving accepted... ~p", [TransId]),
+			rolledback = billy_client:rollback(TransId),
+			?log_debug("Rollback completed... ", []);
 		{rejected, Reason} ->
 			?log_debug("Rejected! Reason: ~p", [Reason]);
 		Any ->
@@ -35,22 +56,25 @@ test() ->
 
 	{ok, SessionId} = start_session(),
 
+	ClientType = <<"test_type">>,
 	CustomerId = <<"1">>,
 	UserId = <<"11">>,
 
 	MaxAmount = 1,
 	RejectsToFinish = 5,
+	Args = [SessionId, ClientType, CustomerId, UserId, self(), MaxAmount, RejectsToFinish],
+
 	Clients = [
-		spawn_link(?MODULE, start_client, [SessionId, CustomerId, UserId, self(), MaxAmount, RejectsToFinish]),
-		spawn_link(?MODULE, start_client, [SessionId, CustomerId, UserId, self(), MaxAmount, RejectsToFinish]),
-		spawn_link(?MODULE, start_client, [SessionId, CustomerId, UserId, self(), MaxAmount, RejectsToFinish]),
-		spawn_link(?MODULE, start_client, [SessionId, CustomerId, UserId, self(), MaxAmount, RejectsToFinish]),
-		spawn_link(?MODULE, start_client, [SessionId, CustomerId, UserId, self(), MaxAmount, RejectsToFinish]),
-		spawn_link(?MODULE, start_client, [SessionId, CustomerId, UserId, self(), MaxAmount, RejectsToFinish]),
-		spawn_link(?MODULE, start_client, [SessionId, CustomerId, UserId, self(), MaxAmount, RejectsToFinish]),
-		spawn_link(?MODULE, start_client, [SessionId, CustomerId, UserId, self(), MaxAmount, RejectsToFinish]),
-		spawn_link(?MODULE, start_client, [SessionId, CustomerId, UserId, self(), MaxAmount, RejectsToFinish]),
-		spawn_link(?MODULE, start_client, [SessionId, CustomerId, UserId, self(), MaxAmount, RejectsToFinish])
+		spawn_link(?MODULE, start_client, Args),
+		spawn_link(?MODULE, start_client, Args),
+		spawn_link(?MODULE, start_client, Args),
+		spawn_link(?MODULE, start_client, Args),
+		spawn_link(?MODULE, start_client, Args),
+		spawn_link(?MODULE, start_client, Args),
+		spawn_link(?MODULE, start_client, Args),
+		spawn_link(?MODULE, start_client, Args),
+		spawn_link(?MODULE, start_client, Args),
+		spawn_link(?MODULE, start_client, Args)
 	],
 
 	{ok, Dict} = join_all(length(Clients), dict:new()),
@@ -63,18 +87,18 @@ test() ->
 
 	print_stats(Dict, Diff).
 
-start_client(_SessionId, _CustomerId, _UserId, CollectorPid, _MaxAmount, 0) ->
+start_client(_SessionId, _ClientType, _CustomerId, _UserId, CollectorPid, _MaxAmount, 0) ->
 	CollectorPid ! {done};
-start_client(SessionId, CustomerId, UserId, CollectorPid, MaxAmount, RejectsToFinish) ->
+start_client(SessionId, ClientType, CustomerId, UserId, CollectorPid, MaxAmount, RejectsToFinish) ->
 	Amount = random:uniform(MaxAmount),
-	case billy_client:reserve(SessionId, CustomerId, UserId, <<"sms_on">>, Amount) of
+	case billy_client:reserve(SessionId, ClientType, CustomerId, UserId, <<"sms_on">>, Amount) of
 		{accepted, TransId} ->
-			timer:sleep(200),
+			%timer:sleep(200),
 			commited = billy_client:commit(TransId),
 			CollectorPid ! {consumed, {<<"sms_on">>, Amount}},
-			start_client(SessionId, CustomerId, UserId, CollectorPid, MaxAmount, RejectsToFinish);
+			start_client(SessionId, ClientType, CustomerId, UserId, CollectorPid, MaxAmount, RejectsToFinish);
 		{rejected, _Reason} ->
-			start_client(SessionId, CustomerId, UserId, CollectorPid, MaxAmount, RejectsToFinish-1)
+			start_client(SessionId, ClientType, CustomerId, UserId, CollectorPid, MaxAmount, RejectsToFinish-1)
 	end.
 
 join_all(0, Dict) ->

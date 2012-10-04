@@ -6,7 +6,7 @@
 -export([
 	start_link/0,
 
-	reserve/4,
+	reserve/5,
 	commit/1,
 	rollback/1,
 
@@ -40,10 +40,11 @@
 start_link() ->
 	gen_server:start_link(?MODULE, [], []).
 
-reserve({SessionId, TransactionId}, CustomerId, UserId, Container) ->
+reserve({SessionId, TransactionId}, ClientType, CustomerId, UserId, Container) ->
 	{ok, PiqiContainer} = re_pack(Container),
 	ReserveRequest = #billy_transaction_reserve_request{
 	    transaction_id = TransactionId,
+		client_type = ClientType,
 	    customer_id = CustomerId,
 		user_id = UserId,
 	    svc_container = PiqiContainer

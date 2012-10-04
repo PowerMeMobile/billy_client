@@ -5,7 +5,7 @@
 %% API
 -export([
 	start_link/0,
-	start_session/4
+	start_session/3
 ]).
 
 %% supervisor callbacks
@@ -23,8 +23,8 @@
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
-start_session(Socket, ClientType, ClientId, ClientPw) ->
-	supervisor:start_child(?MODULE, [Socket, ClientType, ClientId, ClientPw]).
+start_session(Socket, ClientId, ClientPw) ->
+	supervisor:start_child(?MODULE, [Socket, ClientId, ClientPw]).
 
 %% ===================================================================
 %% supervisor callbacks
