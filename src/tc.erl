@@ -6,14 +6,16 @@
 -include_lib("billy_common/include/service.hrl").
 
 start_session() ->
-	billy_client:start_session("127.0.0.1", 16062, <<"client1">>, <<"secureme!">>).
+	billy_client:start_session(
+		"127.0.0.1", 16062, <<52,253,94,158,18,8,17,226,132,11,0,38,158,66,247,165>>, <<"secureme">>
+	).
 
 stop_session(SessionId) ->
 	billy_client:stop_session(SessionId).
 
 c() ->
 	ClientType = <<"test_type">>,
-	CustomerId = <<"1">>,
+	CustomerId = <<74,63,139,182,19,146,17,226,129,226,0,38,158,66,247,165>>,
 	UserId = <<"11">>,
 
 	{ok, SessionId} = start_session(),
@@ -33,7 +35,7 @@ c() ->
 
 r() ->
 	ClientType = <<"test_type">>,
-	CustomerId = <<"1">>,
+	CustomerId = <<74,63,139,182,19,146,17,226,129,226,0,38,158,66,247,165>>,
 	UserId = <<"11">>,
 
 	{ok, SessionId} = start_session(),
@@ -57,7 +59,7 @@ test() ->
 	{ok, SessionId} = start_session(),
 
 	ClientType = <<"test_type">>,
-	CustomerId = <<"1">>,
+	CustomerId = <<74,63,139,182,19,146,17,226,129,226,0,38,158,66,247,165>>,
 	UserId = <<"11">>,
 
 	MaxAmount = 1,
