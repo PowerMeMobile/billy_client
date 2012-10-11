@@ -7,7 +7,7 @@
 
 start_session() ->
 	billy_client:start_session(
-		"127.0.0.1", 16062, <<52,253,94,158,18,8,17,226,132,11,0,38,158,66,247,165>>, <<"secureme">>
+		"127.0.0.1", 16062, <<"test">>, <<"test">>
 	).
 
 stop_session(SessionId) ->
