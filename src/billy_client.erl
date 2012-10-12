@@ -14,14 +14,6 @@
 -type billy_session_id() :: binary().
 -type billy_transaction_id() :: {SessionId::billy_session_id(), TransactionId::integer()}.
 
-% TODO: move these defines to billy_client.hrl
--define(CLIENT_TYPE_ONE_API, <<"one_api">>).
--define(CLIENT_TYPE_FUNNEL, <<"funnel">>).
-
--define(SERVICE_TYPE_SMS_ON, <<"sms_on">>).
--define(SERVICE_TYPE_SMS_OFF, <<"sms_off">>).
--define(SERVICE_TYPE_SMS_INTERNATIONAL, <<"sms_international">>).
-
 %% ===================================================================
 %% API
 %% ===================================================================

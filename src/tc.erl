@@ -2,6 +2,7 @@
 
 -compile(export_all).
 
+-include("billy_client.hrl").
 -include_lib("billy_common/include/logging.hrl").
 -include_lib("billy_common/include/service.hrl").
 
@@ -20,7 +21,7 @@ c() ->
 
 	{ok, SessionId} = start_session(),
 
-	case billy_client:reserve(SessionId, ClientType, CustomerId, UserId, <<"sms_on">>, 10) of
+	case billy_client:reserve(SessionId, ClientType, CustomerId, UserId, ?SERVICE_TYPE_SMS_ON, 10) of
 		{accepted, TransId} ->
 			?log_debug("Reserving accepted... ~p", [TransId]),
 			commited = billy_client:commit(TransId),
@@ -40,7 +41,7 @@ r() ->
 
 	{ok, SessionId} = start_session(),
 
-	case billy_client:reserve(SessionId, ClientType, CustomerId, UserId, <<"sms_on">>, 10) of
+	case billy_client:reserve(SessionId, ClientType, CustomerId, UserId, ?SERVICE_TYPE_SMS_ON, 10) of
 		{accepted, TransId} ->
 			?log_debug("Reserving accepted... ~p", [TransId]),
 			rolledback = billy_client:rollback(TransId),
@@ -93,11 +94,11 @@ start_client(_SessionId, _ClientType, _CustomerId, _UserId, CollectorPid, _MaxAm
 	CollectorPid ! {done};
 start_client(SessionId, ClientType, CustomerId, UserId, CollectorPid, MaxAmount, RejectsToFinish) ->
 	Amount = random:uniform(MaxAmount),
-	case billy_client:reserve(SessionId, ClientType, CustomerId, UserId, <<"sms_on">>, Amount) of
+	case billy_client:reserve(SessionId, ClientType, CustomerId, UserId, ?SERVICE_TYPE_SMS_ON, Amount) of
 		{accepted, TransId} ->
 			%timer:sleep(200),
 			commited = billy_client:commit(TransId),
-			CollectorPid ! {consumed, {<<"sms_on">>, Amount}},
+			CollectorPid ! {consumed, {?SERVICE_TYPE_SMS_ON, Amount}},
 			start_client(SessionId, ClientType, CustomerId, UserId, CollectorPid, MaxAmount, RejectsToFinish);
 		{rejected, _Reason} ->
 			start_client(SessionId, ClientType, CustomerId, UserId, CollectorPid, MaxAmount, RejectsToFinish-1)
@@ -125,7 +126,7 @@ print_stats(Dict, Time) ->
 	io:format("Time used: ~p secs~n", [Time]).
 
 test_commit(SessionId, CID) ->
-	case billy_client:reserve(SessionId, CID, <<"sms_on">>, 10) of
+	case billy_client:reserve(SessionId, CID, ?SERVICE_TYPE_SMS_ON, 10) of
 		{accepted, TransId} ->
 			?log_debug("Reserving accepted... ~p", [TransId]),
 			commited = billy_client:commit(TransId),
@@ -137,7 +138,7 @@ test_commit(SessionId, CID) ->
 	end.
 
 test_rollback(SessionId, CID) ->
-	case billy_client:reserve(SessionId, CID, <<"sms_on">>, 10) of
+	case billy_client:reserve(SessionId, CID, ?SERVICE_TYPE_SMS_ON, 10) of
 		{accepted, TransId} ->
 			rolledback = billy_client:rollback(TransId),
 			?log_debug("Rollingback complited: ~p", [now()]);
@@ -205,7 +206,7 @@ start_thread(Task, SessionId, CounterSrv) ->
 		Task).
 
 start_transaction(SessionId, CID, CounterSrv) ->
-	case billy_client:reserve(SessionId, CID, <<"sms_on">>, 10) of
+	case billy_client:reserve(SessionId, CID, ?SERVICE_TYPE_SMS_ON, 10) of
 		{accepted, TransId} ->
 			?log_debug("Reserving accepted... ~p", [TransId]),
 			% commited = billy_client:commit(TransId),
