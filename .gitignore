@@ -1,5 +1,5 @@
 deps
 ebin
-rel/billy_client
-rel/erl_crash.dump
+log
+erl_crash.dump
 

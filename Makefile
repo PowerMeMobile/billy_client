@@ -1,6 +1,4 @@
-NAME=billy_client
-
-all: generate
+all: compile
 
 get-deps:
 	@./rebar get-deps
@@ -20,19 +18,8 @@ build-plt:
 compile: get-deps
 	@./rebar compile
 
-generate: compile
-	@rm -rf ./rel/$(NAME)
-	@./rebar generate
-
 compile-fast:
 	@./rebar compile
 
-generate-fast: compile-fast
-	@rm -rf ./rel/$(NAME)
-	@./rebar generate
-
 console:
-	./rel/$(NAME)/bin/$(NAME) console
-
-release: generate
-	./rel/create-release.sh
+	./console.sh
