@@ -70,6 +70,7 @@ start_session(Host, Port, ClientId, ClientPw) ->
 			%% calling process will monitor the session process.
 			erlang:link(SessionPid),
 			{ok, FSM} = gen_server:call(SessionPid, get_fsm),
+			%% pass socket control to FSM.
 			ok = gen_tcp:controlling_process(Socket, FSM),
 			inet:setopts(Socket, [{active, once}]),
 			%% wait for bind result.
