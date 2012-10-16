@@ -67,6 +67,8 @@ start_session(Host, Port, ClientId, ClientPw) ->
 		{ok, Socket} ->
 			%% start new session and pass socket to it.
 			{ok, SessionPid} = billy_client_session_sup:start_session(Socket, ClientId, ClientPw),
+			%% calling process will monitor the session process.
+			erlang:link(SessionPid),
 			{ok, FSM} = gen_server:call(SessionPid, get_fsm),
 			ok = gen_tcp:controlling_process(Socket, FSM),
 			inet:setopts(Socket, [{active, once}]),
