@@ -74,7 +74,7 @@ start_session(Host, Port, ClientId, ClientPw) ->
 			ok = gen_tcp:controlling_process(Socket, FSM),
 			inet:setopts(Socket, [{active, once}]),
 			%% wait for bind result.
-			case gen_server:call(SessionPid, wait_for_bind_result, 10000) of
+			case gen_server:call(SessionPid, wait_for_bind_result, 5000) of
 				{ok, {accepted, SessionId}} ->
 					{ok, SessionId};
 				{ok, {rejected, <<"invalid_credentials">>}} ->
@@ -96,7 +96,7 @@ stop_session(SessionId) ->
 	{ok, FSM} = gen_server:call(SessionPid, get_fsm),
 	gen_billy_session_c:reply_unbind(FSM, [{reason, normal}]),
 	%% wait for unbind result.
-	{ok, unbound} = gen_server:call(SessionPid, wait_for_unbind_result, 10000),
+	{ok, unbound} = gen_server:call(SessionPid, wait_for_unbind_result, 5000),
 	gen_server:cast(SessionPid, disconnect).
 
 -spec start_transaction(SessionId::binary()) -> {ok, TransactionId::any()} | {error, Reason::any()}.
