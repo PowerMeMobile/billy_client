@@ -15,9 +15,9 @@ stop_session(SessionId) ->
 	billy_client:stop_session(SessionId).
 
 c() ->
-	ClientType = <<"test_type">>,
+	ClientType = <<"test">>,
 	CustomerId = <<74,63,139,182,19,146,17,226,129,226,0,38,158,66,247,165>>,
-	UserId = <<"11">>,
+	UserId = <<"User">>,
 
 	{ok, SessionId} = start_session(),
 
@@ -35,9 +35,9 @@ c() ->
 	ok = stop_session(SessionId).
 
 r() ->
-	ClientType = <<"test_type">>,
+	ClientType = <<"test">>,
 	CustomerId = <<74,63,139,182,19,146,17,226,129,226,0,38,158,66,247,165>>,
-	UserId = <<"11">>,
+	UserId = <<"User">>,
 
 	{ok, SessionId} = start_session(),
 
@@ -59,9 +59,9 @@ test() ->
 
 	{ok, SessionId} = start_session(),
 
-	ClientType = <<"test_type">>,
+	ClientType = <<"test">>,
 	CustomerId = <<74,63,139,182,19,146,17,226,129,226,0,38,158,66,247,165>>,
-	UserId = <<"11">>,
+	UserId = <<"User">>,
 
 	MaxAmount = 1,
 	RejectsToFinish = 5,
@@ -101,6 +101,7 @@ start_client(SessionId, ClientType, CustomerId, UserId, CollectorPid, MaxAmount,
 			CollectorPid ! {consumed, {?SERVICE_TYPE_SMS_ON, Amount}},
 			start_client(SessionId, ClientType, CustomerId, UserId, CollectorPid, MaxAmount, RejectsToFinish);
 		{rejected, _Reason} ->
+			io:format("Reserve rejected with: ~p~n", [_Reason]),
 			start_client(SessionId, ClientType, CustomerId, UserId, CollectorPid, MaxAmount, RejectsToFinish-1)
 	end.
 
