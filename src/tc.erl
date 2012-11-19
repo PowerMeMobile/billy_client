@@ -16,7 +16,7 @@ stop_session(SessionId) ->
 
 c() ->
 	ClientType = <<"test">>,
-	CustomerId = <<74,63,139,182,19,146,17,226,129,226,0,38,158,66,247,165>>,
+	CustomerId = <<"4a3f8bb6-1392-11e2-81e2-00269e42f7a5">>,
 	UserId = <<"User">>,
 
 	{ok, SessionId} = start_session(),
@@ -36,7 +36,7 @@ c() ->
 
 r() ->
 	ClientType = <<"test">>,
-	CustomerId = <<74,63,139,182,19,146,17,226,129,226,0,38,158,66,247,165>>,
+	CustomerId = <<"4a3f8bb6-1392-11e2-81e2-00269e42f7a5">>,
 	UserId = <<"User">>,
 
 	{ok, SessionId} = start_session(),
@@ -60,7 +60,7 @@ test() ->
 	{ok, SessionId} = start_session(),
 
 	ClientType = <<"test">>,
-	CustomerId = <<74,63,139,182,19,146,17,226,129,226,0,38,158,66,247,165>>,
+	CustomerId = <<"4a3f8bb6-1392-11e2-81e2-00269e42f7a5">>,
 	UserId = <<"User">>,
 
 	MaxAmount = 1,
