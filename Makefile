@@ -1,5 +1,8 @@
 all: compile
 
+update-deps:
+	@./rebar update-deps
+
 get-deps:
 	@./rebar get-deps
 
