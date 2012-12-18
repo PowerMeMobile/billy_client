@@ -28,7 +28,7 @@
 -include_lib("billy_common/include/service.hrl").
 -include_lib("billy_common/include/gen_server_spec.hrl").
 
--type billy_transaction_id() :: {SessionId::binary(), TransactionId::integer()}.
+-type billy_transaction_id() :: {SessionId::binary(), TransactionIdx::integer()}.
 
 -record(state, {}).
 
@@ -40,10 +40,10 @@
 start_link() ->
 	gen_server:start_link(?MODULE, [], []).
 
-reserve({SessionId, TransactionId}, ClientType, CustomerId, UserId, Container) ->
+reserve({SessionId, TransactionIdx}, ClientType, CustomerId, UserId, Container) ->
 	{ok, PiqiContainer} = re_pack(Container),
 	ReserveRequest = #billy_transaction_reserve_request{
-	    transaction_id = TransactionId,
+	    transaction_idx = TransactionIdx,
 		client_type = ClientType,
 	    customer_id = CustomerId,
 		user_id = UserId,
@@ -53,14 +53,14 @@ reserve({SessionId, TransactionId}, ClientType, CustomerId, UserId, Container) -
 	ResponseBin = list_to_binary(ReserveRequestDeepList),
 	billy_client_session:send(SessionId, ResponseBin).
 
-commit({SessionId, TransactionId})->
-	Request = {commit_request, #billy_transaction_commit_request{transaction_id = TransactionId}},
+commit({SessionId, TransactionIdx})->
+	Request = {commit_request, #billy_transaction_commit_request{transaction_idx = TransactionIdx}},
 	RequestDeepList = billy_transaction_piqi:gen_transaction(Request),
 	ResponseBin = list_to_binary(RequestDeepList),
 	billy_client_session:send(SessionId, ResponseBin).
 
-rollback({SessionId, TransactionId})->
-	Request = {rollback_request, #billy_transaction_rollback_request{transaction_id = TransactionId}},
+rollback({SessionId, TransactionIdx})->
+	Request = {rollback_request, #billy_transaction_rollback_request{transaction_idx = TransactionIdx}},
 	RequestDeepList = billy_transaction_piqi:gen_transaction(Request),
 	ResponseBin = list_to_binary(RequestDeepList),
 	billy_client_session:send(SessionId, ResponseBin).
@@ -107,22 +107,22 @@ code_change(_OldVsn, State, _Extra) ->
   | billy_transaction_rollback_response()) -> term().
 
 dispatch_response_internal(SessionId, #billy_transaction_reserve_response{
-	transaction_id = TransactionId,
+	transaction_idx = TransactionIdx,
 	result = Result
 }) ->
-	billy_client_transaction:reserved({SessionId, TransactionId}, Result);
+	billy_client_transaction:reserved({SessionId, TransactionIdx}, Result);
 
 dispatch_response_internal(SessionId, #billy_transaction_commit_response{
-	transaction_id = TransactionId,
+	transaction_idx = TransactionIdx,
 	result = Result
 }) ->
-	billy_client_transaction:commited({SessionId, TransactionId}, Result);
+	billy_client_transaction:commited({SessionId, TransactionIdx}, Result);
 
 dispatch_response_internal(SessionId, #billy_transaction_rollback_response{
-	transaction_id = TransactionId,
+	transaction_idx = TransactionIdx,
 	result = Result
 }) ->
-	billy_client_transaction:rolledback({SessionId, TransactionId}, Result).
+	billy_client_transaction:rolledback({SessionId, TransactionIdx}, Result).
 
 re_pack(#svc_container{
 	details = ListOfPackages
