@@ -5,7 +5,6 @@
 	{applications, [
 		kernel,
 		stdlib,
-		gproc,
 		billy_common,
 		billy_session_c
 	]},
