@@ -36,3 +36,6 @@ console:
 
 develop:
 	./develop.sh
+
+tags:
+	find . -name "*.[e,h]rl" -print | etags -

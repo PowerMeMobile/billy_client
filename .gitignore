@@ -1,5 +1,6 @@
 deps
 ebin
+priv
 log
 erl_crash.dump
-
+*TAGS
