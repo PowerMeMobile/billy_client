@@ -2,12 +2,9 @@ NAME=billy_client
 OTP_PLT=~/.otp.plt
 PRJ_PLT=$(NAME).plt
 
-all: compile
+all: compile xref
 
 compile: get-deps
-	@./rebar compile
-
-compile-fast:
 	@./rebar compile
 
 get-deps:
@@ -15,6 +12,9 @@ get-deps:
 
 update-deps:
 	@./rebar update-deps
+
+xref: compile
+	@./rebar xref skip_deps=true
 
 clean:
 	@./rebar clean
