@@ -47,7 +47,7 @@
 -include_lib("billy_common/include/billy_transaction_piqi.hrl").
 -include_lib("billy_common/include/service.hrl").
 -include_lib("billy_common/include/transaction.hrl").
--include_lib("billy_common/include/gen_fsm_spec.hrl").
+-include_lib("alley_common/include/gen_fsm_spec.hrl").
 
 -spec st_initial(gen_fsm_event(), gen_fsm_state_data()) -> gen_fsm_handle_event_result().
 -spec st_initial(gen_fsm_event(), gen_fsm_from(), gen_fsm_state_data()) -> gen_fsm_handle_sync_event_result().
