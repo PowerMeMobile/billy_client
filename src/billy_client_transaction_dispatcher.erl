@@ -23,10 +23,10 @@
     code_change/3
 ]).
 
--include_lib("billy_common/include/logging.hrl").
--include_lib("billy_common/include/billy_transaction_piqi.hrl").
--include_lib("billy_common/include/service.hrl").
+-include_lib("alley_common/include/logging.hrl").
 -include_lib("alley_common/include/gen_server_spec.hrl").
+-include_lib("billy_common/include/service.hrl").
+-include_lib("billy_common/include/billy_transaction_piqi.hrl").
 
 -type billy_transaction_id() :: {SessionId::binary(), TransactionIdx::integer()}.
 

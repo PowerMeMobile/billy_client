@@ -5,7 +5,7 @@
 %% application callbacks
 -export([start/2, stop/1]).
 
--include_lib("billy_common/include/logging.hrl").
+-include_lib("alley_common/include/logging.hrl").
 
 %% ===================================================================
 %% application callbacks

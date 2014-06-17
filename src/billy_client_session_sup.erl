@@ -14,7 +14,7 @@
 %% Helper macro for declaring children of supervisor
 -define(CHILD(I, Type), {I, {I, start_link, []}, temporary, 50000, Type, [I]}).
 
--include_lib("billy_common/include/logging.hrl").
+-include_lib("alley_common/include/logging.hrl").
 
 %% ===================================================================
 %% API

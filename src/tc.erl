@@ -3,7 +3,7 @@
 -compile(export_all).
 
 -include("billy_client.hrl").
--include_lib("billy_common/include/logging.hrl").
+-include_lib("alley_common/include/logging.hrl").
 -include_lib("billy_common/include/service.hrl").
 
 start_session() ->
