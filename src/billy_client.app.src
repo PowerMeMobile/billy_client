@@ -5,8 +5,7 @@
     {applications, [
         kernel,
         stdlib,
-        billy_common,
-        billy_session_c
+        billy_common
     ]},
     {mod, {billy_client_app, []}},
     {env, []}
