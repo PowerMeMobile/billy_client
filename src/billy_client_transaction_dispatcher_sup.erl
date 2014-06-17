@@ -4,8 +4,8 @@
 
 %% API
 -export([
-	start_link/0,
-	start_dispatcher/0
+    start_link/0,
+    start_dispatcher/0
 ]).
 
 %% supervisor callbacks
@@ -19,7 +19,7 @@ start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 start_dispatcher() ->
-	supervisor:start_child(?MODULE, []).
+    supervisor:start_child(?MODULE, []).
 
 %% ===================================================================
 %% supervisor callbacks
@@ -27,8 +27,8 @@ start_dispatcher() ->
 
 init([]) ->
     {ok, {{simple_one_for_one, 5, 10}, [
-    	{billy_client_transaction_dispatcher,
-			{billy_client_transaction_dispatcher, start_link, []},
-			temporary, 20000, worker, [billy_client_transaction_dispatcher]}
+        {billy_client_transaction_dispatcher,
+            {billy_client_transaction_dispatcher, start_link, []},
+            temporary, 20000, worker, [billy_client_transaction_dispatcher]}
     ]}}.
 

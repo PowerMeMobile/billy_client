@@ -1,13 +1,13 @@
 {application, billy_client, [
-	{description, "billy_client - client library for Billy"},
-	{vsn, "0.1.0"},
-	{registered, []},
-	{applications, [
-		kernel,
-		stdlib,
-		billy_common,
-		billy_session_c
-	]},
-	{mod, {billy_client_app, []}},
-	{env, []}
+    {description, "Client library for Billy"},
+    {vsn, "0.1.0"},
+    {registered, []},
+    {applications, [
+        kernel,
+        stdlib,
+        billy_common,
+        billy_session_c
+    ]},
+    {mod, {billy_client_app, []}},
+    {env, []}
 ]}.

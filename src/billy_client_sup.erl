@@ -25,9 +25,9 @@ start_link() ->
 %% ===================================================================
 
 init([]) ->
-	?log_debug("init", []),
+    ?log_debug("init", []),
     {ok, {{one_for_one, 5, 10}, [
-    	?CHILD(billy_client_session_sup, supervisor),
-    	?CHILD(billy_client_transaction_sup, supervisor),
-    	?CHILD(billy_client_transaction_dispatcher_sup, supervisor)
+        ?CHILD(billy_client_session_sup, supervisor),
+        ?CHILD(billy_client_transaction_sup, supervisor),
+        ?CHILD(billy_client_transaction_dispatcher_sup, supervisor)
     ]}}.
